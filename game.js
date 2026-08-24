@@ -217,12 +217,22 @@
       this.tone({ frequency: 980, endFrequency: 520, duration: 0.07, type: "square", volume: 0.02, delay: 0.015 });
     }
 
-    surfaceImpact(blockType, destroyed) {
+    surfaceImpact(blockType) {
       if (blockType === "groundBrick") {
-        this.tone({ frequency: destroyed ? 105 : 145, endFrequency: 70, duration: destroyed ? 0.18 : 0.09, type: "triangle", volume: 0.055 });
+        this.tone({ frequency: 145, endFrequency: 70, duration: 0.09, type: "triangle", volume: 0.055 });
       } else {
-        this.tone({ frequency: destroyed ? 390 : 520, endFrequency: destroyed ? 150 : 310, duration: destroyed ? 0.17 : 0.075, type: "square", volume: 0.038 });
+        this.tone({ frequency: 520, endFrequency: 310, duration: 0.075, type: "square", volume: 0.038 });
       }
+    }
+
+    blockDestroyed(blockType) {
+      if (blockType === "groundBrick") {
+        this.tone({ frequency: 118, endFrequency: 38, duration: 0.28, type: "triangle", volume: 0.075 });
+        this.tone({ frequency: 82, endFrequency: 46, duration: 0.2, type: "sawtooth", volume: 0.032, delay: 0.035 });
+        return;
+      }
+      this.tone({ frequency: 760, endFrequency: 180, duration: 0.14, type: "square", volume: 0.052 });
+      this.tone({ frequency: 1320, endFrequency: 340, duration: 0.1, type: "sawtooth", volume: 0.028, delay: 0.018 });
     }
 
     actorHit() {
@@ -355,7 +365,7 @@
     }
 
     setCrouching(wantsToCrouch, world, forced = false) {
-      if (wantsToCrouch && (this.grounded || forced) && !this.crouching) {
+      if (wantsToCrouch && !this.crouching) {
         const bottom = this.bottom;
         this.height = ACTOR_TUNING.crouchingHeight;
         this.y = bottom - this.height;
@@ -480,8 +490,8 @@
       }
     }
 
-    takeDamage(amount, knockbackDirection, kind = "projectile") {
-      if (!this.alive || this.invulnerability > 0) return false;
+    takeDamage(amount, knockbackDirection, kind = "projectile", bypassInvulnerability = false) {
+      if (!this.alive || (this.invulnerability > 0 && !bypassInvulnerability)) return false;
       const previousHealth = this.health;
       this.health = Math.max(0, this.health - amount);
       this.lostHeartIndex = Math.floor(this.health / 2);
@@ -679,7 +689,6 @@
         this.bounces > FIREBALL_TUNING.maxBounces ||
         this.x < -80 ||
         this.x > WORLD.width + 80 ||
-        this.y < -120 ||
         this.y > WORLD.height + 120
       ) {
         this.active = false;
@@ -691,7 +700,7 @@
       this.damagedBlockIds.add(block.id);
       const destroyed = game.damageBlock(block, 1);
       game.emitImpact(this.x, this.y, destroyed);
-      game.audio.surfaceImpact(block.type, destroyed);
+      if (!destroyed) game.audio.surfaceImpact(block.type);
       return destroyed;
     }
 
@@ -878,7 +887,7 @@
         },
         this.world,
         {
-          onBlockBreak: (block) => this.emitBlockBreak(block),
+          onBlockBreak: (block) => this.onBlockDestroyed(block),
           onJump: () => this.audio.jump(),
         },
       );
@@ -892,7 +901,7 @@
           aiControls,
           this.world,
           {
-            onBlockBreak: (block) => this.emitBlockBreak(block),
+            onBlockBreak: (block) => this.onBlockDestroyed(block),
             onJump: () => this.audio.jump(),
           },
         );
@@ -970,11 +979,14 @@
       if (horizontalOverlap < 8 || !crossedHead) return false;
 
       const knockbackDirection = Math.sign(victim.centerX - attacker.centerX) || attacker.facing;
-      const damaged = victim.takeDamage(
-        ACTOR_TUNING.stompDamage,
-        knockbackDirection,
-        "stomp",
-      );
+      const protectedByCrouch = victim.crouching;
+      const damaged = protectedByCrouch
+        ? false
+        : victim.takeDamage(
+            ACTOR_TUNING.stompDamage,
+            knockbackDirection,
+            "stomp",
+          );
       if (damaged) victim.setCrouching(true, this.world, true);
 
       attacker.y = victim.y - attacker.height;
@@ -983,6 +995,9 @@
       this.emitStomp(attacker.centerX, victim.y, damaged);
       this.audio.stomp();
       if (damaged) this.onActorDamaged(victim, ACTOR_TUNING.stompDamage, "stomp");
+      else if (protectedByCrouch) {
+        gameStatus.textContent = "Pisotón bloqueado por el agachado.";
+      }
       return true;
     }
 
@@ -1009,8 +1024,46 @@
 
     damageBlock(block, amount) {
       const destroyed = block.damage(amount);
-      if (destroyed) this.emitBlockBreak(block);
+      if (destroyed) this.onBlockDestroyed(block);
       return destroyed;
+    }
+
+    onBlockDestroyed(block) {
+      this.applySupportCollapse(block);
+      this.emitBlockBreak(block);
+    }
+
+    applySupportCollapse(block) {
+      const actors = [this.player, this.aiActor].filter(Boolean);
+      const blockCenterX = block.x + block.width / 2;
+      const blockCenterY = block.y + block.height / 2;
+
+      for (const actor of actors) {
+        if (!actor.alive || !actor.grounded) continue;
+        const horizontalOverlap =
+          Math.min(actor.x + actor.width, block.x + block.width) -
+          Math.max(actor.x, block.x);
+        const stoodOnBlock = Math.abs(actor.bottom - block.y) <= 3 && horizontalOverlap >= 6;
+        if (!stoodOnBlock) continue;
+
+        const dx = actor.centerX - blockCenterX;
+        const dy = actor.centerY - blockCenterY;
+        const distance = Math.hypot(dx, dy) || 1;
+        const radialX = dx / distance;
+        const radialY = dy / distance;
+        const damaged = actor.takeDamage(
+          1,
+          Math.sign(radialX) || actor.facing,
+          "collapse",
+          true,
+        );
+
+        actor.vx = radialX * 260;
+        actor.vy = radialY * 320;
+        actor.grounded = false;
+        this.emitActorImpact(actor.centerX, actor.centerY, damaged);
+        if (damaged) this.onActorDamaged(actor, 1, "collapse");
+      }
     }
 
     addParticle(options) {
@@ -1127,6 +1180,7 @@
     }
 
     emitBlockBreak(block) {
+      this.audio.blockDestroyed(block.type);
       const colors =
         block.type === "groundBrick"
           ? ["#e8752f", "#8f301d", "#ffc15a"]
@@ -1591,6 +1645,11 @@
     reset: () => game.reset(),
     spawnAI: () => game.spawnAI(),
     damagePlayer: (amount = 1) => game.player.takeDamage(amount, 1, "projectile"),
+    movePlayerToOpenSky: () => {
+      game.player.x = 15 * WORLD.tileSize + 3;
+      game.player.previousX = game.player.x;
+      return game.snapshot();
+    },
     forceStomp: () => {
       game.spawnAI();
       game.player.x = game.aiActor.x;
@@ -1598,6 +1657,23 @@
       game.player.previousY = game.player.y - 18;
       game.player.vy = 520;
       game.resolveStomps();
+      return game.snapshot();
+    },
+    forceCrouchedStomp: () => {
+      game.spawnAI();
+      game.aiActor.setCrouching(true, game.world);
+      game.aiActor.previousY = game.aiActor.y;
+      game.player.x = game.aiActor.x;
+      game.player.y = game.aiActor.y - game.player.height + 2;
+      game.player.previousY = game.player.y - 18;
+      game.player.vy = 520;
+      game.resolveStomps();
+      return game.snapshot();
+    },
+    destroyPlayerSupport: () => {
+      const column = Math.floor(game.player.centerX / WORLD.tileSize);
+      const block = game.world.blockAt(column, 16);
+      game.damageBlock(block, block.hp);
       return game.snapshot();
     },
     forceFireballClash: () => {
@@ -1621,6 +1697,15 @@
       game.fireballs = [fireball];
       fireball.hitActor(game);
       game.fireballs = game.fireballs.filter((candidate) => candidate.active);
+      return game.snapshot();
+    },
+    forceSkyFireball: () => {
+      const fireball = new Fireball(game.player);
+      fireball.x = WORLD.width / 2;
+      fireball.y = -200;
+      fireball.vy = -220;
+      game.fireballs = [fireball];
+      fireball.update(WORLD.fixedStep, game);
       return game.snapshot();
     },
     dropPlayer: () => {
