@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="MVL Etapa 1: prototipo jugable de plataformas, destrucción por bloques y proyectiles parabólicos."
+    />
+    <meta name="theme-color" content="#07111f" />
+    <title>MVL — Etapa 1</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="game-shell" aria-label="MVL Etapa 1">
+      <canvas
+        id="game"
+        width="1280"
+        height="720"
+        tabindex="0"
+        aria-label="Arena jugable de MVL. Usá A y D para moverte, W y S para apuntar, E para disparar y Espacio para saltar."
+      >
+        Tu navegador necesita compatibilidad con Canvas 2D para ejecutar MVL.
+      </canvas>
+
+      <p id="loadingMessage" class="loading-message">Cargando MVL…</p>
+      <button id="restartButton" class="restart-button" type="button" hidden>
+        REINICIAR ETAPA
+      </button>
+      <p id="gameStatus" class="sr-only" aria-live="polite"></p>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>
