@@ -1,26 +1,34 @@
 # MVL — Etapa 1
 
-Prototipo web liviano de un plataformas 2D competitivo. Esta primera etapa valida el motor con un único personaje; todavía no incluye segundo jugador, IA ni red.
+Prototipo web liviano de una arena de plataformas 2D destructible. Esta versión permite validar el movimiento, el combate contra una IA y las reglas centrales de vidas y caída al vacío.
 
 ## Controles
 
-- `A`: mover/apuntar a la izquierda.
-- `D`: mover/apuntar a la derecha.
-- `W`: apuntar hacia arriba.
-- `S`: apuntar hacia abajo.
-- `E`: disparar una bola de fuego.
+- `A`: mover a la izquierda.
+- `D`: mover a la derecha.
+- `S`: agacharse; la hitbox baja de dos celdas a una.
+- `E`: disparar hacia donde mira el personaje.
 - `Espacio`: saltar.
-
-Las direcciones pueden combinarse para disparar en diagonal. Sin una dirección presionada, el personaje dispara hacia donde está mirando.
+- `Enter`: incorporar un rival controlado por IA.
 
 ## Reglas implementadas
 
-- El personaje comienza con 3 vidas.
-- Caer al vacío coloca inmediatamente las vidas en 0 y termina la partida.
-- Los ladrillos flotantes tienen 3 HP contra proyectiles y se rompen al golpearlos correctamente desde abajo.
-- Los ladrillos de suelo tienen 6 HP contra proyectiles.
-- El suelo utiliza dos filas de ladrillos individuales. Para abrir un hueco completo deben desaparecer ambos ladrillos de una columna.
-- Los proyectiles tienen gravedad, trayectoria parabólica y rebote sobre superficies.
+- Cada personaje comienza con 3 vidas.
+- Un impacto de proyectil elimina exactamente una vida.
+- Después de recibir daño, el personaje parpadea y es invulnerable brevemente.
+- Caer al vacío elimina inmediatamente todas las vidas.
+- Cada personaje puede mantener como máximo dos bolas de fuego activas.
+- Los ladrillos flotantes tienen 3 HP y se rompen al golpearlos correctamente desde abajo.
+- Los ladrillos del suelo tienen 6 HP y forman dos filas independientes.
+- Los proyectiles tienen gravedad, trayectoria parabólica, rebote y una estela de partículas.
+
+## Apariencia extensible
+
+El personaje se dibuja por capas independientes de piel, cabello y ropa. Las paletas están separadas de las físicas para que un futuro apartado de personalización pueda reemplazarlas sin modificar hitboxes ni movimiento.
+
+## Cielo y viento
+
+Cada partida genera nueve nubes con posiciones, escalas y velocidades distintas. Todas comparten la dirección y la intensidad base de un viento sorteado al iniciar la partida.
 
 ## Ejecutar localmente
 
@@ -36,6 +44,6 @@ Luego abrir `http://localhost:8000`.
 
 - `index.html`: Canvas y elementos mínimos de interfaz.
 - `style.css`: presentación 16:9 y escalado responsivo.
-- `game.js`: entrada, física, nivel, entidades, colisiones y renderizado.
+- `game.js`: entrada, física, IA, entidades, colisiones y renderizado.
 
-El nivel usa una cuadrícula de símbolos. Cada celda solo selecciona un tipo registrado por el motor; las dimensiones, HP y reglas del bloque no forman parte de los datos del nivel.
+El nivel usa una cuadrícula de símbolos. Cada celda solo selecciona un tipo registrado por el motor; dimensiones, HP y reglas siguen perteneciendo al motor.
