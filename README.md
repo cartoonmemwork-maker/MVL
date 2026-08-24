@@ -6,21 +6,29 @@ Prototipo web liviano de una arena de plataformas 2D destructible. Esta versión
 
 - `A`: mover a la izquierda.
 - `D`: mover a la derecha.
-- `S`: agacharse; la hitbox baja de dos celdas a una.
+- `S`: agacharse; la hitbox baja de dos celdas a una. También se puede saltar agachado.
 - `E`: disparar hacia donde mira el personaje.
 - `Espacio`: saltar.
 - `Enter`: incorporar un rival controlado por IA.
 
 ## Reglas implementadas
 
-- Cada personaje comienza con 3 vidas.
-- Un impacto de proyectil elimina exactamente una vida.
+- Cada personaje comienza con 10 puntos de vida distribuidos en 5 corazones.
+- Cada corazón representa 2 puntos y puede mostrarse completo o por la mitad.
+- Un impacto de proyectil elimina exactamente 1 punto de vida.
+- Saltar sobre la cabeza del rival elimina 3 puntos, lo fuerza a agacharse durante su invulnerabilidad y produce un rebote para quien cae encima.
 - Después de recibir daño, el personaje parpadea y es invulnerable brevemente.
-- Caer al vacío elimina inmediatamente todas las vidas.
+- Caer al vacío coloca inmediatamente la vida en 0.
 - Cada personaje puede mantener como máximo dos bolas de fuego activas.
+- Las bolas de fuego enfrentadas se anulan al colisionar y generan partículas.
 - Los ladrillos flotantes tienen 3 HP y se rompen al golpearlos correctamente desde abajo.
+- Un salto agachado puede golpear un ladrillo desde abajo, pero no lo destruye.
 - Los ladrillos del suelo tienen 6 HP y forman dos filas independientes.
 - Los proyectiles tienen gravedad, trayectoria parabólica, rebote y una estela de partículas.
+
+## Sonido
+
+Los efectos se sintetizan en tiempo real mediante Web Audio y no necesitan archivos externos. Hay sonidos diferenciados para salto, disparo, impactos contra cada tipo de ladrillo, daño a personajes, choque entre proyectiles y pisotón.
 
 ## Apariencia extensible
 
