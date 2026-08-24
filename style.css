@@ -30,8 +30,8 @@ body {
   height: min(100vh, calc(100vw * 9 / 16));
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  background: #5b8def;
-  outline: 1px solid rgba(255, 255, 255, 0.12);
+  background: #75aadb;
+  outline: 1px solid rgba(255, 255, 255, 0.16);
 }
 
 #game {
