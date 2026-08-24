@@ -21,6 +21,7 @@
     width: 34,
     standingHeight: 80,
     crouchingHeight: 40,
+    maxHealth: 10,
     acceleration: 2300,
     deceleration: 2800,
     maxSpeed: 350,
@@ -29,6 +30,8 @@
     maxFallSpeed: 1100,
     invulnerabilityTime: 0.78,
     lostHeartFlashTime: 0.46,
+    stompDamage: 3,
+    stompBounceVelocity: -790,
   });
 
   const FIREBALL_TUNING = Object.freeze({
@@ -169,6 +172,75 @@
     }
   }
 
+  class AudioSystem {
+    constructor() {
+      this.context = null;
+      this.enabled = true;
+      const unlock = () => this.ensureContext();
+      window.addEventListener("keydown", unlock);
+      window.addEventListener("pointerdown", unlock);
+    }
+
+    ensureContext() {
+      if (!this.enabled) return null;
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return null;
+      if (!this.context) this.context = new AudioContextClass();
+      if (this.context.state === "suspended") this.context.resume();
+      return this.context;
+    }
+
+    tone({ frequency, endFrequency = frequency, duration, type = "square", volume = 0.05, delay = 0 }) {
+      const context = this.ensureContext();
+      if (!context) return;
+      const start = context.currentTime + delay;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(Math.max(30, frequency), start);
+      oscillator.frequency.exponentialRampToValueAtTime(Math.max(30, endFrequency), start + duration);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(volume, start + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.02);
+    }
+
+    jump() {
+      this.tone({ frequency: 220, endFrequency: 510, duration: 0.13, type: "square", volume: 0.045 });
+    }
+
+    fire() {
+      this.tone({ frequency: 620, endFrequency: 260, duration: 0.11, type: "sawtooth", volume: 0.038 });
+      this.tone({ frequency: 980, endFrequency: 520, duration: 0.07, type: "square", volume: 0.02, delay: 0.015 });
+    }
+
+    surfaceImpact(blockType, destroyed) {
+      if (blockType === "groundBrick") {
+        this.tone({ frequency: destroyed ? 105 : 145, endFrequency: 70, duration: destroyed ? 0.18 : 0.09, type: "triangle", volume: 0.055 });
+      } else {
+        this.tone({ frequency: destroyed ? 390 : 520, endFrequency: destroyed ? 150 : 310, duration: destroyed ? 0.17 : 0.075, type: "square", volume: 0.038 });
+      }
+    }
+
+    actorHit() {
+      this.tone({ frequency: 250, endFrequency: 75, duration: 0.2, type: "sawtooth", volume: 0.06 });
+      this.tone({ frequency: 710, endFrequency: 180, duration: 0.13, type: "square", volume: 0.026 });
+    }
+
+    fireballClash() {
+      this.tone({ frequency: 820, endFrequency: 120, duration: 0.16, type: "sawtooth", volume: 0.05 });
+      this.tone({ frequency: 1140, endFrequency: 260, duration: 0.12, type: "square", volume: 0.025, delay: 0.02 });
+    }
+
+    stomp() {
+      this.tone({ frequency: 125, endFrequency: 72, duration: 0.14, type: "square", volume: 0.065 });
+      this.tone({ frequency: 360, endFrequency: 620, duration: 0.11, type: "triangle", volume: 0.04, delay: 0.025 });
+    }
+  }
+
   class Block {
     constructor(id, type, column, row) {
       const definition = TILE_TYPES[type];
@@ -245,11 +317,16 @@
       this.facing = facing;
       this.grounded = true;
       this.crouching = false;
-      this.lives = 3;
+      this.maxHealth = ACTOR_TUNING.maxHealth;
+      this.health = this.maxHealth;
       this.invulnerability = 0;
       this.lostHeartTimer = 0;
       this.lostHeartIndex = -1;
+      this.lostHeartHalf = "right";
+      this.lostHealthSegments = [];
       this.firePoseTimer = 0;
+      this.forcedCrouchTimer = 0;
+      this.crouchJumping = false;
       this.animationTime = Math.random() * 2;
     }
 
@@ -266,18 +343,19 @@
     }
 
     get alive() {
-      return this.lives > 0;
+      return this.health > 0;
     }
 
     updateTimers(dt) {
       this.invulnerability = Math.max(0, this.invulnerability - dt);
       this.lostHeartTimer = Math.max(0, this.lostHeartTimer - dt);
       this.firePoseTimer = Math.max(0, this.firePoseTimer - dt);
+      this.forcedCrouchTimer = Math.max(0, this.forcedCrouchTimer - dt);
       this.animationTime += dt;
     }
 
-    setCrouching(wantsToCrouch, world) {
-      if (wantsToCrouch && this.grounded && !this.crouching) {
+    setCrouching(wantsToCrouch, world, forced = false) {
+      if (wantsToCrouch && (this.grounded || forced) && !this.crouching) {
         const bottom = this.bottom;
         this.height = ACTOR_TUNING.crouchingHeight;
         this.y = bottom - this.height;
@@ -285,7 +363,12 @@
         return;
       }
 
-      if (!wantsToCrouch && this.crouching) {
+      if (
+        !wantsToCrouch &&
+        this.crouching &&
+        this.forcedCrouchTimer === 0 &&
+        !(this.crouchJumping && !this.grounded)
+      ) {
         const target = {
           x: this.x,
           y: this.bottom - ACTOR_TUNING.standingHeight,
@@ -300,14 +383,18 @@
       }
     }
 
-    update(dt, controls, world, onBlockBreak) {
+    update(dt, controls, world, events) {
       this.updateTimers(dt);
       if (!this.alive) return;
-      this.setCrouching(Boolean(controls.crouch), world);
+      const forcedCrouch = this.forcedCrouchTimer > 0;
+      this.setCrouching(Boolean(controls.crouch) || forcedCrouch, world, forcedCrouch);
       this.previousX = this.x;
       this.previousY = this.y;
 
-      const horizontalInput = this.crouching ? 0 : clamp(controls.horizontal || 0, -1, 1);
+      const horizontalInput =
+        this.crouching && this.grounded
+          ? 0
+          : clamp(controls.horizontal || 0, -1, 1);
       if (horizontalInput !== 0) {
         this.facing = horizontalInput;
         this.vx = moveToward(
@@ -319,14 +406,17 @@
         this.vx = moveToward(this.vx, 0, ACTOR_TUNING.deceleration * dt);
       }
 
-      if (controls.jumpPressed && this.grounded && !this.crouching) {
+      if (controls.jumpPressed && this.grounded && this.forcedCrouchTimer === 0) {
+        this.crouchJumping = this.crouching;
         this.vy = ACTOR_TUNING.jumpVelocity;
         this.grounded = false;
+        events.onJump(this);
       }
 
       this.vy = Math.min(this.vy + ACTOR_TUNING.gravity * dt, ACTOR_TUNING.maxFallSpeed);
       this.moveHorizontally(dt, world);
-      this.moveVertically(dt, world, onBlockBreak);
+      this.moveVertically(dt, world, events.onBlockBreak);
+      if (this.grounded && this.crouchJumping) this.crouchJumping = false;
     }
 
     moveHorizontally(dt, world) {
@@ -379,18 +469,43 @@
 
         this.y = contactBottom;
         this.vy = 0;
-        if (hitBlock.breakFromBelow && hitBlock.breakImmediately()) onBlockBreak(hitBlock);
+        if (
+          !this.crouching &&
+          !this.crouchJumping &&
+          hitBlock.breakFromBelow &&
+          hitBlock.breakImmediately()
+        ) {
+          onBlockBreak(hitBlock);
+        }
       }
     }
 
-    takeHit(knockbackDirection) {
+    takeDamage(amount, knockbackDirection, kind = "projectile") {
       if (!this.alive || this.invulnerability > 0) return false;
-      this.lives = Math.max(0, this.lives - 1);
-      this.lostHeartIndex = this.lives;
+      const previousHealth = this.health;
+      this.health = Math.max(0, this.health - amount);
+      this.lostHeartIndex = Math.floor(this.health / 2);
+      this.lostHeartHalf = this.health % 2 === 1 ? "right" : "left";
+      this.lostHealthSegments = Array.from(
+        { length: previousHealth - this.health },
+        (_, offset) => {
+          const removedUnit = previousHealth - 1 - offset;
+          return {
+            heartIndex: Math.floor(removedUnit / 2),
+            half: removedUnit % 2 === 0 ? "left" : "right",
+          };
+        },
+      );
       this.lostHeartTimer = ACTOR_TUNING.lostHeartFlashTime;
       this.invulnerability = ACTOR_TUNING.invulnerabilityTime;
-      this.vx = knockbackDirection * 230;
-      this.vy = Math.min(this.vy, -210);
+      if (kind === "stomp") {
+        this.forcedCrouchTimer = ACTOR_TUNING.invulnerabilityTime;
+        this.vx = knockbackDirection * 120;
+        this.vy = Math.max(0, this.vy);
+      } else {
+        this.vx = knockbackDirection * 230;
+        this.vy = Math.min(this.vy, -210);
+      }
       return true;
     }
   }
@@ -399,7 +514,7 @@
     constructor(actor) {
       this.actor = actor;
       this.decisionTimer = 0;
-      this.fireCooldown = 0.7;
+      this.fireCooldown = 0.38;
       this.jumpQueued = false;
       this.crouchTimer = 0;
       this.horizontal = 0;
@@ -413,17 +528,24 @@
       this.decisionTimer -= dt;
 
       if (this.decisionTimer <= 0) {
-        this.decisionTimer = randomRange(0.09, 0.16);
+        this.decisionTimer = randomRange(0.045, 0.085);
         const actor = this.actor;
         const target = game.player;
-        const deltaX = target.centerX - actor.centerX;
+        const predictedTargetX = target.centerX + target.vx * 0.2;
+        const deltaX = predictedTargetX - actor.centerX;
         const distance = Math.abs(deltaX);
 
-        if (distance > 330) this.horizontal = Math.sign(deltaX);
-        else if (distance < 170) this.horizontal = -Math.sign(deltaX);
-        else this.horizontal = Math.random() < 0.35 ? Math.sign(deltaX) : 0;
+        const canPursueStomp =
+          actor.bottom < target.y + 16 &&
+          distance < 175 &&
+          actor.vy > -180;
+        if (canPursueStomp) this.horizontal = Math.sign(deltaX);
+        else if (distance > 285) this.horizontal = Math.sign(deltaX);
+        else if (distance < 105) this.horizontal = -Math.sign(deltaX);
+        else this.horizontal = Math.random() < 0.72 ? Math.sign(deltaX) : -Math.sign(deltaX);
 
-        const frontX = actor.centerX + actor.facing * (actor.width / 2 + 22);
+        const movementDirection = this.horizontal || actor.facing;
+        const frontX = actor.centerX + movementDirection * (actor.width / 2 + 30);
         const frontColumn = clamp(Math.floor(frontX / WORLD.tileSize), 0, WORLD.columns - 1);
         const feetRow = clamp(Math.floor((actor.bottom + 4) / WORLD.tileSize), 0, WORLD.rows - 1);
         const support = game.world.blockAt(frontColumn, feetRow);
@@ -441,34 +563,64 @@
             block.y + block.height > actor.y + 8,
         );
 
-        if (
-          actor.grounded &&
-          !actor.crouching &&
-          (holeAhead || obstacleAhead || target.y < actor.y - 105 || Math.random() < 0.035)
-        ) {
-          this.jumpQueued = true;
+        const incoming = game.fireballs
+          .filter(
+            (fireball) =>
+              fireball.active &&
+              fireball.ownerId !== actor.id &&
+              Math.sign(fireball.vx) === Math.sign(actor.centerX - fireball.x) &&
+              Math.abs(actor.centerX - fireball.x) < 270 &&
+              fireball.y > actor.y - 12 &&
+              fireball.y < actor.bottom + 12,
+          )
+          .sort(
+            (a, b) => Math.abs(actor.centerX - a.x) - Math.abs(actor.centerX - b.x),
+          )[0];
+
+        if (incoming && actor.grounded) {
+          if (incoming.y < actor.y + 45) this.crouchTimer = 0.42;
+          else this.jumpQueued = true;
         }
 
-        const incoming = game.fireballs.some(
-          (fireball) =>
-            fireball.active &&
-            fireball.ownerId !== actor.id &&
-            Math.sign(fireball.vx) === Math.sign(actor.centerX - fireball.x) &&
-            Math.abs(actor.centerX - fireball.x) < 165 &&
-            fireball.y > actor.y + 22 &&
-            fireball.y < actor.bottom + 8,
-        );
-        if (incoming && actor.grounded && Math.random() < 0.58) this.crouchTimer = 0.34;
+        const offensiveJump =
+          distance > 70 &&
+          distance < 235 &&
+          target.y >= actor.y - 35 &&
+          Math.random() < 0.42;
+        if (
+          actor.grounded &&
+          actor.forcedCrouchTimer === 0 &&
+          (holeAhead || obstacleAhead || target.y < actor.y - 75 || offensiveJump)
+        ) {
+          this.jumpQueued = true;
+          this.crouchTimer = 0;
+        }
 
+        const flightTime = distance / FIREBALL_TUNING.launchSpeed;
+        const predictedFireballY =
+          actor.y + actor.height * 0.45 +
+          FIREBALL_TUNING.launchLift * flightTime +
+          0.5 * FIREBALL_TUNING.gravity * flightTime * flightTime;
+        const usefulShot = Math.abs(predictedFireballY - target.centerY) < 135;
         if (
           this.fireCooldown <= 0 &&
-          distance < 720 &&
-          Math.abs(target.centerY - actor.centerY) < 190
+          actor.forcedCrouchTimer === 0 &&
+          distance < 800 &&
+          usefulShot
         ) {
           actor.facing = Math.sign(deltaX) || actor.facing;
           this.firePressed = true;
-          this.fireCooldown = randomRange(0.68, 1.18);
+          this.fireCooldown = randomRange(0.38, 0.68);
         }
+
+        const projectileWall = game.fireballs.some(
+          (fireball) =>
+            fireball.active &&
+            fireball.ownerId !== actor.id &&
+            Math.abs(fireball.x - actor.centerX) < 90 &&
+            Math.abs(fireball.y - actor.centerY) < 75,
+        );
+        if (projectileWall && actor.grounded && this.crouchTimer === 0) this.jumpQueued = true;
       }
 
       const controls = {
@@ -539,6 +691,7 @@
       this.damagedBlockIds.add(block.id);
       const destroyed = game.damageBlock(block, 1);
       game.emitImpact(this.x, this.y, destroyed);
+      game.audio.surfaceImpact(block.type, destroyed);
       return destroyed;
     }
 
@@ -600,10 +753,10 @@
       );
       if (!target) return;
 
-      const damaged = target.takeHit(Math.sign(this.vx) || 1);
+      const damaged = target.takeDamage(1, Math.sign(this.vx) || 1, "projectile");
       game.emitActorImpact(this.x, this.y, damaged);
       this.active = false;
-      if (damaged) game.onActorDamaged(target);
+      if (damaged) game.onActorDamaged(target, 1, "projectile");
     }
   }
 
@@ -647,6 +800,7 @@
 
   class Game {
     constructor() {
+      this.audio = new AudioSystem();
       this.input = new InputManager();
       this.reset();
     }
@@ -670,7 +824,7 @@
       this.elapsed = 0;
       this.input.clear();
       restartButton.hidden = true;
-      gameStatus.textContent = "Etapa iniciada. Tenés 3 vidas. Enter activa al rival IA.";
+      gameStatus.textContent = "Etapa iniciada. Tenés 10 puntos de vida. Enter activa al rival IA.";
       canvas.focus({ preventScroll: true });
     }
 
@@ -702,7 +856,7 @@
         isAI: true,
       });
       this.ai = new RivalAI(this.aiActor);
-      gameStatus.textContent = "Rival IA activado. Ambos personajes tienen 3 vidas.";
+      gameStatus.textContent = "Rival IA activado. Ambos personajes tienen 10 puntos de vida.";
       return true;
     }
 
@@ -723,7 +877,10 @@
           jumpPressed: this.input.consumePress("jump"),
         },
         this.world,
-        (block) => this.emitBlockBreak(block),
+        {
+          onBlockBreak: (block) => this.emitBlockBreak(block),
+          onJump: () => this.audio.jump(),
+        },
       );
 
       if (this.input.consumePress("fire")) this.tryFire(this.player);
@@ -734,25 +891,31 @@
           dt,
           aiControls,
           this.world,
-          (block) => this.emitBlockBreak(block),
+          {
+            onBlockBreak: (block) => this.emitBlockBreak(block),
+            onJump: () => this.audio.jump(),
+          },
         );
         if (this.ai.firePressed) this.tryFire(this.aiActor);
       } else if (this.aiActor) {
         this.aiActor.updateTimers(dt);
       }
 
+      this.resolveStomps();
+
       for (const fireball of this.fireballs) fireball.update(dt, this);
+      this.resolveFireballCollisions();
       this.fireballs = this.fireballs.filter((fireball) => fireball.active);
 
       this.checkVoid(this.player);
       if (this.state === "playing" && this.aiActor) this.checkVoid(this.aiActor);
       if (this.state !== "playing") return;
 
-      if (this.player.lives === 0 && this.player.invulnerability === 0) {
+      if (this.player.health === 0 && this.player.invulnerability === 0) {
         this.endMatch("defeat", "TE QUEDASTE SIN CORAZONES");
       } else if (
         this.aiActor &&
-        this.aiActor.lives === 0 &&
+        this.aiActor.health === 0 &&
         this.aiActor.invulnerability === 0
       ) {
         this.endMatch("victory", "RIVAL IA SIN CORAZONES");
@@ -770,20 +933,78 @@
       this.fireballs.push(fireball);
       actor.firePoseTimer = 0.2;
       this.emitMuzzle(fireball.x, fireball.y);
+      this.audio.fire();
       return true;
     }
 
     checkVoid(actor) {
       if (actor.y <= WORLD.height + 90) return;
-      actor.lives = 0;
+      actor.health = 0;
       actor.invulnerability = 0;
-      if (actor.id === "player") this.endMatch("defeat", "CAÍDA AL VACÍO · CORAZONES 0");
+      if (actor.id === "player") this.endMatch("defeat", "CAÍDA AL VACÍO · VIDA 0");
       else this.endMatch("victory", "LA IA CAYÓ AL VACÍO");
     }
 
-    onActorDamaged(actor) {
+    onActorDamaged(actor, amount, kind) {
       const who = actor.id === "player" ? "Jugador" : "Rival IA";
-      gameStatus.textContent = `${who} recibió un impacto. Corazones: ${actor.lives}.`;
+      gameStatus.textContent = `${who} perdió ${amount} punto${amount === 1 ? "" : "s"}. Vida: ${actor.health}.`;
+      if (kind === "projectile") this.audio.actorHit();
+    }
+
+    resolveStomps() {
+      if (!this.aiActor || !this.player.alive || !this.aiActor.alive) return;
+      if (this.tryStomp(this.player, this.aiActor)) return;
+      this.tryStomp(this.aiActor, this.player);
+    }
+
+    tryStomp(attacker, victim) {
+      if (attacker.vy < 110) return false;
+      const previousBottom = attacker.previousY + attacker.height;
+      const horizontalOverlap =
+        Math.min(attacker.x + attacker.width, victim.x + victim.width) -
+        Math.max(attacker.x, victim.x);
+      const crossedHead =
+        previousBottom <= victim.previousY + 13 &&
+        attacker.bottom >= victim.y &&
+        attacker.y < victim.y;
+      if (horizontalOverlap < 8 || !crossedHead) return false;
+
+      const knockbackDirection = Math.sign(victim.centerX - attacker.centerX) || attacker.facing;
+      const damaged = victim.takeDamage(
+        ACTOR_TUNING.stompDamage,
+        knockbackDirection,
+        "stomp",
+      );
+      if (damaged) victim.setCrouching(true, this.world, true);
+
+      attacker.y = victim.y - attacker.height;
+      attacker.vy = ACTOR_TUNING.stompBounceVelocity;
+      attacker.grounded = false;
+      this.emitStomp(attacker.centerX, victim.y, damaged);
+      this.audio.stomp();
+      if (damaged) this.onActorDamaged(victim, ACTOR_TUNING.stompDamage, "stomp");
+      return true;
+    }
+
+    resolveFireballCollisions() {
+      for (let firstIndex = 0; firstIndex < this.fireballs.length; firstIndex += 1) {
+        const first = this.fireballs[firstIndex];
+        if (!first.active) continue;
+        for (let secondIndex = firstIndex + 1; secondIndex < this.fireballs.length; secondIndex += 1) {
+          const second = this.fireballs[secondIndex];
+          if (!second.active || first.ownerId === second.ownerId) continue;
+          const dx = first.x - second.x;
+          const dy = first.y - second.y;
+          const collisionRadius = first.radius + second.radius;
+          if (dx * dx + dy * dy > collisionRadius * collisionRadius) continue;
+
+          first.active = false;
+          second.active = false;
+          this.emitFireballClash((first.x + second.x) / 2, (first.y + second.y) / 2);
+          this.audio.fireballClash();
+          break;
+        }
+      }
     }
 
     damageBlock(block, amount) {
@@ -870,6 +1091,41 @@
       }
     }
 
+    emitFireballClash(x, y) {
+      const colors = ["#fff7c2", "#ffc83d", "#ff5a24", "#ffffff"];
+      for (let i = 0; i < 18; i += 1) {
+        const angle = (Math.PI * 2 * i) / 18 + randomRange(-0.12, 0.12);
+        const speed = randomRange(120, 330);
+        this.addParticle({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color: colors[i % colors.length],
+          size: randomRange(3, 7),
+          lifetime: randomRange(0.2, 0.42),
+          gravity: 120,
+        });
+      }
+    }
+
+    emitStomp(x, y, damaged) {
+      const colors = damaged ? ["#ffffff", "#fff3a3", "#ffcf5a"] : ["#ffffff"];
+      for (let i = 0; i < 14; i += 1) {
+        const direction = i % 2 === 0 ? -1 : 1;
+        this.addParticle({
+          x: x + randomRange(-10, 10),
+          y,
+          vx: direction * randomRange(80, 260),
+          vy: randomRange(-210, -45),
+          color: colors[i % colors.length],
+          size: randomRange(3, 7),
+          lifetime: randomRange(0.25, 0.48),
+          gravity: 520,
+        });
+      }
+    }
+
     emitBlockBreak(block) {
       const colors =
         block.type === "groundBrick"
@@ -917,8 +1173,11 @@
               facing: actor.facing,
               grounded: actor.grounded,
               crouching: actor.crouching,
-              lives: actor.lives,
+              crouchJumping: actor.crouchJumping,
+              health: actor.health,
+              maxHealth: actor.maxHealth,
               invulnerability: Number(actor.invulnerability.toFixed(2)),
+              forcedCrouchTimer: Number(actor.forcedCrouchTimer.toFixed(2)),
             }
           : null;
       return {
@@ -928,6 +1187,7 @@
         cloudSpeeds: this.clouds.map((cloud) => Number(cloud.speed.toFixed(2))),
         player: actorSnapshot(this.player),
         ai: actorSnapshot(this.aiActor),
+        particleCount: this.particles.length,
         fireballCount: this.fireballs.length,
         fireballsByOwner: {
           player: this.fireballs.filter((fireball) => fireball.ownerId === "player").length,
@@ -1194,42 +1454,60 @@
       ctx.globalAlpha = 1;
     }
 
-    drawPixelHeart(x, y, filled, alpha = 1) {
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = "rgba(7, 17, 31, 0.72)";
-      ctx.fillRect(x - 3, y - 3, 30, 29);
-      ctx.fillStyle = filled ? "#e9424d" : "rgba(255,255,255,0.2)";
+    drawHeartShape(x, y, color) {
+      ctx.fillStyle = color;
       ctx.fillRect(x + 3, y, 7, 7);
       ctx.fillRect(x + 15, y, 7, 7);
       ctx.fillRect(x, y + 5, 25, 8);
       ctx.fillRect(x + 4, y + 13, 17, 6);
       ctx.fillRect(x + 8, y + 19, 9, 5);
-      if (filled) {
+    }
+
+    drawHeartHalf(x, y, side, color, alpha = 1) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.rect(side === "left" ? x : x + 12.5, y - 1, 12.5, 26);
+      ctx.clip();
+      this.drawHeartShape(x, y, color);
+      ctx.restore();
+    }
+
+    drawPixelHeart(x, y, units, flashingHalves = [], flashVisible = false) {
+      this.drawHeartShape(x, y, "rgba(7, 17, 31, 0.3)");
+      if (units >= 1) this.drawHeartHalf(x, y, "left", "#e9424d");
+      if (units >= 2) this.drawHeartHalf(x, y, "right", "#e9424d");
+      if (units > 0) {
         ctx.fillStyle = "#ff9da4";
         ctx.fillRect(x + 4, y + 4, 5, 4);
       }
-      ctx.restore();
+      if (flashVisible) {
+        for (const half of flashingHalves) {
+          this.drawHeartHalf(x, y, half, "#ff7882", 0.95);
+        }
+      }
     }
 
     drawHearts(actor, startX, alignRight = false) {
       if (!actor) return;
-      ctx.save();
-      ctx.fillStyle = "#ffffff";
-      ctx.font = '700 16px "Courier New", monospace';
-      ctx.textBaseline = "top";
-      ctx.textAlign = alignRight ? "right" : "left";
-      ctx.fillText(actor.id === "player" ? "VOS" : "IA", startX, 17);
-      const direction = alignRight ? -1 : 1;
-      const heartBase = startX + (alignRight ? -24 : 0);
-      for (let index = 0; index < 3; index += 1) {
-        const filled = index < actor.lives;
-        const flashing = index === actor.lostHeartIndex && actor.lostHeartTimer > 0;
+      for (let index = 0; index < 5; index += 1) {
+        const units = clamp(actor.health - index * 2, 0, 2);
+        const flashing = actor.lostHeartTimer > 0;
         const flashVisible = Math.floor(actor.lostHeartTimer * 28) % 2 === 0;
-        const x = heartBase + direction * index * 34 + (alignRight ? -25 : 0);
-        this.drawPixelHeart(x, 39, filled || (flashing && flashVisible), flashing ? 0.95 : 1);
+        const flashingHalves = flashing
+          ? actor.lostHealthSegments
+              .filter((segment) => segment.heartIndex === index)
+              .map((segment) => segment.half)
+          : [];
+        const x = alignRight ? startX - 25 - index * 31 : startX + index * 31;
+        this.drawPixelHeart(
+          x,
+          23,
+          units,
+          flashingHalves,
+          flashVisible,
+        );
       }
-      ctx.restore();
     }
 
     drawHud() {
@@ -1312,7 +1590,39 @@
     snapshot: () => game.snapshot(),
     reset: () => game.reset(),
     spawnAI: () => game.spawnAI(),
-    damagePlayer: () => game.player.takeHit(1),
+    damagePlayer: (amount = 1) => game.player.takeDamage(amount, 1, "projectile"),
+    forceStomp: () => {
+      game.spawnAI();
+      game.player.x = game.aiActor.x;
+      game.player.y = game.aiActor.y - game.player.height + 2;
+      game.player.previousY = game.player.y - 18;
+      game.player.vy = 520;
+      game.resolveStomps();
+      return game.snapshot();
+    },
+    forceFireballClash: () => {
+      game.spawnAI();
+      const first = new Fireball(game.player);
+      const second = new Fireball(game.aiActor);
+      first.x = 640;
+      first.y = 360;
+      second.x = 640;
+      second.y = 360;
+      game.fireballs = [first, second];
+      game.resolveFireballCollisions();
+      game.fireballs = game.fireballs.filter((fireball) => fireball.active);
+      return game.snapshot();
+    },
+    forceProjectileHitAI: () => {
+      game.spawnAI();
+      const fireball = new Fireball(game.player);
+      fireball.x = game.aiActor.centerX;
+      fireball.y = game.aiActor.centerY;
+      game.fireballs = [fireball];
+      fireball.hitActor(game);
+      game.fireballs = game.fireballs.filter((candidate) => candidate.active);
+      return game.snapshot();
+    },
     dropPlayer: () => {
       game.player.y = WORLD.height + 100;
     },
