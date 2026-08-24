@@ -17,40 +17,59 @@
     maxFrameDelta: 0.05,
   });
 
-  const PLAYER_TUNING = Object.freeze({
+  const ACTOR_TUNING = Object.freeze({
     width: 34,
-    height: 56,
+    standingHeight: 80,
+    crouchingHeight: 40,
     acceleration: 2300,
     deceleration: 2800,
     maxSpeed: 350,
     gravity: 1900,
     jumpVelocity: -930,
     maxFallSpeed: 1100,
+    invulnerabilityTime: 0.78,
+    lostHeartFlashTime: 0.46,
   });
 
   const FIREBALL_TUNING = Object.freeze({
-    radius: 10,
+    radius: 11,
     launchSpeed: 650,
+    launchLift: -125,
     gravity: 1450,
     bounceVelocity: 470,
     maxLifetime: 4,
     maxBounces: 7,
-    maxActive: 8,
+    maxActivePerActor: 2,
+    trailInterval: 0.025,
   });
 
-  // El futuro editor solo elegira uno de estos tipos en cada celda.
-  // Dimensiones, HP y comportamiento pertenecen al motor, no al nivel.
+  // La apariencia está separada de la física para admitir un editor futuro.
+  const PLAYER_APPEARANCE = Object.freeze({
+    skin: "#e9ad76",
+    skinLight: "#ffd0a0",
+    hair: "#3a2430",
+    shirt: "#16a6a1",
+    shirtLight: "#63d7c7",
+    pants: "#264f78",
+    shoes: "#172238",
+    accent: "#fff3a3",
+  });
+
+  const AI_APPEARANCE = Object.freeze({
+    skin: "#d89468",
+    skinLight: "#f6bd8f",
+    hair: "#172238",
+    shirt: "#7e4bc6",
+    shirtLight: "#b58bf0",
+    pants: "#52357c",
+    shoes: "#251c38",
+    accent: "#ffcf5a",
+  });
+
+  // El futuro editor solo elige un tipo por celda. HP y dimensiones son del motor.
   const TILE_TYPES = Object.freeze({
-    floatingBrick: Object.freeze({
-      symbol: "F",
-      maxHp: 3,
-      breakFromBelow: true,
-    }),
-    groundBrick: Object.freeze({
-      symbol: "G",
-      maxHp: 6,
-      breakFromBelow: false,
-    }),
+    floatingBrick: Object.freeze({ symbol: "F", maxHp: 3, breakFromBelow: true }),
+    groundBrick: Object.freeze({ symbol: "G", maxHp: 6, breakFromBelow: false }),
   });
 
   const SYMBOL_TO_TYPE = Object.freeze(
@@ -59,7 +78,6 @@
     ),
   );
 
-  // 32 x 18. Las dos ultimas filas son ladrillos de suelo independientes.
   const LEVEL_GRID = Object.freeze([
     "                                ",
     "                                ",
@@ -84,13 +102,14 @@
   const ACTION_BY_CODE = Object.freeze({
     KeyA: "left",
     KeyD: "right",
-    KeyW: "up",
-    KeyS: "down",
+    KeyS: "crouch",
     KeyE: "fire",
     Space: "jump",
+    Enter: "spawnAI",
   });
 
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const randomRange = (min, max) => min + Math.random() * (max - min);
   const moveToward = (value, target, amount) => {
     if (value < target) return Math.min(value + amount, target);
     if (value > target) return Math.max(value - amount, target);
@@ -189,10 +208,6 @@
     constructor() {
       this.blocks = [];
       this.blockByCell = new Map();
-      this.buildLevel();
-    }
-
-    buildLevel() {
       let id = 0;
       LEVEL_GRID.forEach((rowText, row) => {
         [...rowText].forEach((symbol, column) => {
@@ -205,29 +220,37 @@
       });
     }
 
-    activeBlocks() {
-      return this.blocks.filter((block) => block.active);
-    }
-
     blockAt(column, row) {
       return this.blockByCell.get(`${column},${row}`) ?? null;
     }
+
+    overlapsActive(rectangle) {
+      return this.blocks.some((block) => block.active && rectanglesOverlap(rectangle, block));
+    }
   }
 
-  class Player {
-    constructor() {
-      this.width = PLAYER_TUNING.width;
-      this.height = PLAYER_TUNING.height;
-      // Centrado sobre la columna 6: un hueco de un ladrillo es fisicamente transitable.
-      this.x = 6 * WORLD.tileSize + (WORLD.tileSize - this.width) / 2;
+  class Actor {
+    constructor({ id, x, facing, appearance, isAI = false }) {
+      this.id = id;
+      this.isAI = isAI;
+      this.appearance = appearance;
+      this.width = ACTOR_TUNING.width;
+      this.height = ACTOR_TUNING.standingHeight;
+      this.x = x;
       this.y = 16 * WORLD.tileSize - this.height;
       this.previousX = this.x;
       this.previousY = this.y;
       this.vx = 0;
       this.vy = 0;
-      this.facing = 1;
+      this.facing = facing;
       this.grounded = true;
-      this.walkCycle = 0;
+      this.crouching = false;
+      this.lives = 3;
+      this.invulnerability = 0;
+      this.lostHeartTimer = 0;
+      this.lostHeartIndex = -1;
+      this.firePoseTimer = 0;
+      this.animationTime = Math.random() * 2;
     }
 
     get centerX() {
@@ -242,34 +265,68 @@
       return this.y + this.height;
     }
 
-    update(dt, input, world, onBlockBreak) {
+    get alive() {
+      return this.lives > 0;
+    }
+
+    updateTimers(dt) {
+      this.invulnerability = Math.max(0, this.invulnerability - dt);
+      this.lostHeartTimer = Math.max(0, this.lostHeartTimer - dt);
+      this.firePoseTimer = Math.max(0, this.firePoseTimer - dt);
+      this.animationTime += dt;
+    }
+
+    setCrouching(wantsToCrouch, world) {
+      if (wantsToCrouch && this.grounded && !this.crouching) {
+        const bottom = this.bottom;
+        this.height = ACTOR_TUNING.crouchingHeight;
+        this.y = bottom - this.height;
+        this.crouching = true;
+        return;
+      }
+
+      if (!wantsToCrouch && this.crouching) {
+        const target = {
+          x: this.x,
+          y: this.bottom - ACTOR_TUNING.standingHeight,
+          width: this.width,
+          height: ACTOR_TUNING.standingHeight,
+        };
+        if (!world.overlapsActive(target)) {
+          this.y = target.y;
+          this.height = target.height;
+          this.crouching = false;
+        }
+      }
+    }
+
+    update(dt, controls, world, onBlockBreak) {
+      this.updateTimers(dt);
+      if (!this.alive) return;
+      this.setCrouching(Boolean(controls.crouch), world);
       this.previousX = this.x;
       this.previousY = this.y;
 
-      const horizontalInput = Number(input.isHeld("right")) - Number(input.isHeld("left"));
+      const horizontalInput = this.crouching ? 0 : clamp(controls.horizontal || 0, -1, 1);
       if (horizontalInput !== 0) {
         this.facing = horizontalInput;
         this.vx = moveToward(
           this.vx,
-          horizontalInput * PLAYER_TUNING.maxSpeed,
-          PLAYER_TUNING.acceleration * dt,
+          horizontalInput * ACTOR_TUNING.maxSpeed,
+          ACTOR_TUNING.acceleration * dt,
         );
       } else {
-        this.vx = moveToward(this.vx, 0, PLAYER_TUNING.deceleration * dt);
+        this.vx = moveToward(this.vx, 0, ACTOR_TUNING.deceleration * dt);
       }
 
-      if (input.consumePress("jump") && this.grounded) {
-        this.vy = PLAYER_TUNING.jumpVelocity;
+      if (controls.jumpPressed && this.grounded && !this.crouching) {
+        this.vy = ACTOR_TUNING.jumpVelocity;
         this.grounded = false;
       }
 
-      this.vy = Math.min(this.vy + PLAYER_TUNING.gravity * dt, PLAYER_TUNING.maxFallSpeed);
+      this.vy = Math.min(this.vy + ACTOR_TUNING.gravity * dt, ACTOR_TUNING.maxFallSpeed);
       this.moveHorizontally(dt, world);
       this.moveVertically(dt, world, onBlockBreak);
-
-      if (Math.abs(this.vx) > 8 && this.grounded) {
-        this.walkCycle += Math.abs(this.vx) * dt * 0.035;
-      }
     }
 
     moveHorizontally(dt, world) {
@@ -278,11 +335,8 @@
 
       for (const block of world.blocks) {
         if (!block.active || !rectanglesOverlap(this, block)) continue;
-        if (this.vx > 0) {
-          this.x = block.x - this.width;
-        } else if (this.vx < 0) {
-          this.x = block.x + block.width;
-        }
+        if (this.vx > 0) this.x = block.x - this.width;
+        else if (this.vx < 0) this.x = block.x + block.width;
         this.vx = 0;
       }
     }
@@ -306,81 +360,166 @@
           this.grounded = true;
         }
       } else if (startedMovingUp) {
-        const previousTop = this.previousY;
         const ceilingBlocks = overlaps.filter(
-          (block) => previousTop >= block.y + block.height - 1,
+          (block) => this.previousY >= block.y + block.height - 1,
         );
+        if (ceilingBlocks.length === 0) return;
 
-        if (ceilingBlocks.length > 0) {
-          const contactBottom = Math.max(
-            ...ceilingBlocks.map((block) => block.y + block.height),
-          );
-          const firstContactRow = ceilingBlocks.filter(
-            (block) => block.y + block.height === contactBottom,
-          );
-          const hitBlock = firstContactRow.reduce((best, block) => {
-            const overlap =
-              Math.min(this.x + this.width, block.x + block.width) -
-              Math.max(this.x, block.x);
-            const bestOverlap =
-              Math.min(this.x + this.width, best.x + best.width) - Math.max(this.x, best.x);
-            return overlap > bestOverlap ? block : best;
-          });
+        const contactBottom = Math.max(...ceilingBlocks.map((block) => block.y + block.height));
+        const firstContactRow = ceilingBlocks.filter(
+          (block) => block.y + block.height === contactBottom,
+        );
+        const hitBlock = firstContactRow.reduce((best, block) => {
+          const overlap =
+            Math.min(this.x + this.width, block.x + block.width) - Math.max(this.x, block.x);
+          const bestOverlap =
+            Math.min(this.x + this.width, best.x + best.width) - Math.max(this.x, best.x);
+          return overlap > bestOverlap ? block : best;
+        });
 
-          this.y = contactBottom;
-          this.vy = 0;
-          if (hitBlock.breakFromBelow && hitBlock.breakImmediately()) onBlockBreak(hitBlock);
-        }
+        this.y = contactBottom;
+        this.vy = 0;
+        if (hitBlock.breakFromBelow && hitBlock.breakImmediately()) onBlockBreak(hitBlock);
       }
     }
 
-    aimVector(input) {
-      let x = Number(input.isHeld("right")) - Number(input.isHeld("left"));
-      let y = Number(input.isHeld("down")) - Number(input.isHeld("up"));
+    takeHit(knockbackDirection) {
+      if (!this.alive || this.invulnerability > 0) return false;
+      this.lives = Math.max(0, this.lives - 1);
+      this.lostHeartIndex = this.lives;
+      this.lostHeartTimer = ACTOR_TUNING.lostHeartFlashTime;
+      this.invulnerability = ACTOR_TUNING.invulnerabilityTime;
+      this.vx = knockbackDirection * 230;
+      this.vy = Math.min(this.vy, -210);
+      return true;
+    }
+  }
 
-      if (x === 0 && y === 0) x = this.facing;
-      const length = Math.hypot(x, y) || 1;
-      return { x: x / length, y: y / length };
+  class RivalAI {
+    constructor(actor) {
+      this.actor = actor;
+      this.decisionTimer = 0;
+      this.fireCooldown = 0.7;
+      this.jumpQueued = false;
+      this.crouchTimer = 0;
+      this.horizontal = 0;
+      this.firePressed = false;
+    }
+
+    decide(dt, game) {
+      this.firePressed = false;
+      this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+      this.crouchTimer = Math.max(0, this.crouchTimer - dt);
+      this.decisionTimer -= dt;
+
+      if (this.decisionTimer <= 0) {
+        this.decisionTimer = randomRange(0.09, 0.16);
+        const actor = this.actor;
+        const target = game.player;
+        const deltaX = target.centerX - actor.centerX;
+        const distance = Math.abs(deltaX);
+
+        if (distance > 330) this.horizontal = Math.sign(deltaX);
+        else if (distance < 170) this.horizontal = -Math.sign(deltaX);
+        else this.horizontal = Math.random() < 0.35 ? Math.sign(deltaX) : 0;
+
+        const frontX = actor.centerX + actor.facing * (actor.width / 2 + 22);
+        const frontColumn = clamp(Math.floor(frontX / WORLD.tileSize), 0, WORLD.columns - 1);
+        const feetRow = clamp(Math.floor((actor.bottom + 4) / WORLD.tileSize), 0, WORLD.rows - 1);
+        const support = game.world.blockAt(frontColumn, feetRow);
+        const lowerSupport = game.world.blockAt(frontColumn, feetRow + 1);
+        const holeAhead =
+          actor.grounded &&
+          (!support || !support.active) &&
+          (!lowerSupport || !lowerSupport.active);
+        const obstacleAhead = game.world.blocks.some(
+          (block) =>
+            block.active &&
+            block.x < frontX + 8 &&
+            block.x + block.width > frontX - 8 &&
+            block.y < actor.bottom - 6 &&
+            block.y + block.height > actor.y + 8,
+        );
+
+        if (
+          actor.grounded &&
+          !actor.crouching &&
+          (holeAhead || obstacleAhead || target.y < actor.y - 105 || Math.random() < 0.035)
+        ) {
+          this.jumpQueued = true;
+        }
+
+        const incoming = game.fireballs.some(
+          (fireball) =>
+            fireball.active &&
+            fireball.ownerId !== actor.id &&
+            Math.sign(fireball.vx) === Math.sign(actor.centerX - fireball.x) &&
+            Math.abs(actor.centerX - fireball.x) < 165 &&
+            fireball.y > actor.y + 22 &&
+            fireball.y < actor.bottom + 8,
+        );
+        if (incoming && actor.grounded && Math.random() < 0.58) this.crouchTimer = 0.34;
+
+        if (
+          this.fireCooldown <= 0 &&
+          distance < 720 &&
+          Math.abs(target.centerY - actor.centerY) < 190
+        ) {
+          actor.facing = Math.sign(deltaX) || actor.facing;
+          this.firePressed = true;
+          this.fireCooldown = randomRange(0.68, 1.18);
+        }
+      }
+
+      const controls = {
+        horizontal: this.horizontal,
+        crouch: this.crouchTimer > 0,
+        jumpPressed: this.jumpQueued,
+      };
+      this.jumpQueued = false;
+      return controls;
     }
   }
 
   class Fireball {
-    constructor(player, aim) {
+    constructor(owner) {
+      this.ownerId = owner.id;
       this.radius = FIREBALL_TUNING.radius;
-      this.x = player.centerX;
-      this.y = player.centerY;
-
-      if (aim.x !== 0) {
-        this.x =
-          aim.x > 0
-            ? player.x + player.width + this.radius + 3
-            : player.x - this.radius - 3;
-      }
-      if (aim.y < 0) this.y = player.y + this.radius + 2;
-      if (aim.y > 0) this.y = player.bottom - this.radius - 2;
-
-      this.vx = aim.x * FIREBALL_TUNING.launchSpeed;
-      this.vy = aim.y * FIREBALL_TUNING.launchSpeed;
+      this.x =
+        owner.facing > 0
+          ? owner.x + owner.width + this.radius + 3
+          : owner.x - this.radius - 3;
+      this.y = owner.y + owner.height * (owner.crouching ? 0.42 : 0.45);
+      this.vx = owner.facing * FIREBALL_TUNING.launchSpeed;
+      this.vy = FIREBALL_TUNING.launchLift;
       this.life = 0;
       this.bounces = 0;
       this.active = true;
       this.damagedBlockIds = new Set();
       this.spin = Math.random() * Math.PI * 2;
+      this.trailTimer = 0;
     }
 
-    update(dt, world, damageBlock, emitImpact) {
+    update(dt, game) {
       if (!this.active) return;
       this.life += dt;
       this.vy += FIREBALL_TUNING.gravity * dt;
-      this.spin += dt * 15;
+      this.spin += dt * 16 * Math.sign(this.vx || 1);
+      this.trailTimer -= dt;
+      if (this.trailTimer <= 0) {
+        this.trailTimer += FIREBALL_TUNING.trailInterval;
+        game.emitFireTrail(this);
+      }
 
       const travel = Math.hypot(this.vx * dt, this.vy * dt);
-      const substeps = clamp(Math.ceil(travel / (this.radius * 0.65)), 1, 10);
+      const substeps = clamp(Math.ceil(travel / (this.radius * 0.6)), 1, 12);
       const subDt = dt / substeps;
 
       for (let step = 0; step < substeps && this.active; step += 1) {
-        this.moveHorizontal(subDt, world, damageBlock, emitImpact);
-        if (this.active) this.moveVertical(subDt, world, damageBlock, emitImpact);
+        this.moveHorizontal(subDt, game);
+        if (this.active) this.hitActor(game);
+        if (this.active) this.moveVertical(subDt, game);
+        if (this.active) this.hitActor(game);
       }
 
       if (
@@ -395,17 +534,17 @@
       }
     }
 
-    tryDamage(block, damageBlock, emitImpact) {
+    tryDamageBlock(block, game) {
       if (this.damagedBlockIds.has(block.id)) return false;
       this.damagedBlockIds.add(block.id);
-      const destroyed = damageBlock(block, 1, this.x, this.y);
-      emitImpact(this.x, this.y, destroyed);
+      const destroyed = game.damageBlock(block, 1);
+      game.emitImpact(this.x, this.y, destroyed);
       return destroyed;
     }
 
-    moveHorizontal(dt, world, damageBlock, emitImpact) {
+    moveHorizontal(dt, game) {
       this.x += this.vx * dt;
-      const collisions = world.blocks.filter(
+      const collisions = game.world.blocks.filter(
         (block) => block.active && circleOverlapsRectangle(this, block),
       );
       if (collisions.length === 0) return;
@@ -418,16 +557,15 @@
         if (this.vx >= 0) return candidate.x < nearest.x ? candidate : nearest;
         return candidate.x + candidate.width > nearest.x + nearest.width ? candidate : nearest;
       });
-      const destroyed = this.tryDamage(block, damageBlock, emitImpact);
-      if (destroyed) return;
+      if (this.tryDamageBlock(block, game)) return;
 
       this.x = this.vx > 0 ? block.x - this.radius : block.x + block.width + this.radius;
       this.active = false;
     }
 
-    moveVertical(dt, world, damageBlock, emitImpact) {
+    moveVertical(dt, game) {
       this.y += this.vy * dt;
-      const collisions = world.blocks.filter(
+      const collisions = game.world.blocks.filter(
         (block) => block.active && circleOverlapsRectangle(this, block),
       );
       if (collisions.length === 0) return;
@@ -441,27 +579,42 @@
         if (falling) return candidate.y < nearest.y ? candidate : nearest;
         return candidate.y + candidate.height > nearest.y + nearest.height ? candidate : nearest;
       });
-      const destroyed = this.tryDamage(block, damageBlock, emitImpact);
-      if (destroyed) return;
+      if (this.tryDamageBlock(block, game)) return;
 
       if (falling) {
         this.y = block.y - this.radius;
         this.vy = -FIREBALL_TUNING.bounceVelocity;
         this.bounces += 1;
+        game.emitBounce(this.x, this.y);
       } else {
         this.y = block.y + block.height + this.radius;
         this.active = false;
       }
     }
+
+    hitActor(game) {
+      const targets = [game.player, game.aiActor].filter(Boolean);
+      const target = targets.find(
+        (actor) =>
+          actor.id !== this.ownerId && actor.alive && circleOverlapsRectangle(this, actor),
+      );
+      if (!target) return;
+
+      const damaged = target.takeHit(Math.sign(this.vx) || 1);
+      game.emitActorImpact(this.x, this.y, damaged);
+      this.active = false;
+      if (damaged) game.onActorDamaged(target);
+    }
   }
 
   class Cloud {
-    constructor(x, y, scale, speed) {
+    constructor({ x, y, scale, speed, variant }) {
       this.x = x;
       this.y = y;
       this.scale = scale;
       this.speed = speed;
-      this.width = 122 * scale;
+      this.variant = variant;
+      this.width = (106 + variant * 10) * scale;
     }
 
     update(dt) {
@@ -472,7 +625,7 @@
   }
 
   class Particle {
-    constructor(x, y, vx, vy, color, size, lifetime) {
+    constructor({ x, y, vx, vy, color, size, lifetime, gravity = 0 }) {
       this.x = x;
       this.y = y;
       this.vx = vx;
@@ -481,11 +634,12 @@
       this.size = size;
       this.life = lifetime;
       this.maxLife = lifetime;
+      this.gravity = gravity;
     }
 
     update(dt) {
       this.life -= dt;
-      this.vy += 900 * dt;
+      this.vy += this.gravity * dt;
       this.x += this.vx * dt;
       this.y += this.vy * dt;
     }
@@ -494,28 +648,62 @@
   class Game {
     constructor() {
       this.input = new InputManager();
-      this.clouds = [
-        new Cloud(32, 38, 0.9, 5),
-        new Cloud(328, 67, 0.72, 7),
-        new Cloud(580, 24, 0.86, 4),
-        new Cloud(872, 79, 0.7, 8),
-        new Cloud(1080, 48, 0.92, 5.5),
-      ];
       this.reset();
     }
 
     reset() {
       this.world = new World();
-      this.player = new Player();
+      this.player = new Actor({
+        id: "player",
+        x: 6 * WORLD.tileSize + 3,
+        facing: 1,
+        appearance: PLAYER_APPEARANCE,
+      });
+      this.aiActor = null;
+      this.ai = null;
       this.fireballs = [];
       this.particles = [];
-      this.lives = 3;
+      this.wind = this.createWind();
+      this.clouds = this.createClouds();
       this.state = "playing";
+      this.resultReason = "";
       this.elapsed = 0;
-      this.input?.clear();
+      this.input.clear();
       restartButton.hidden = true;
-      gameStatus.textContent = "Etapa iniciada. Tenés 3 vidas.";
+      gameStatus.textContent = "Etapa iniciada. Tenés 3 vidas. Enter activa al rival IA.";
       canvas.focus({ preventScroll: true });
+    }
+
+    createWind() {
+      const direction = Math.random() < 0.5 ? -1 : 1;
+      return direction * randomRange(7, 14);
+    }
+
+    createClouds() {
+      return Array.from({ length: 9 }, (_, index) => {
+        const depth = randomRange(0.58, 1.28);
+        return new Cloud({
+          x: randomRange(-80, WORLD.width + 30),
+          y: randomRange(25, 235),
+          scale: randomRange(0.42, 0.83),
+          speed: this.wind * depth,
+          variant: index % 3,
+        });
+      });
+    }
+
+    spawnAI() {
+      if (this.aiActor || this.state !== "playing") return false;
+      this.aiActor = new Actor({
+        id: "ai",
+        x: 25 * WORLD.tileSize + 3,
+        facing: -1,
+        appearance: AI_APPEARANCE,
+        isAI: true,
+      });
+      this.ai = new RivalAI(this.aiActor);
+      gameStatus.textContent = "Rival IA activado. Ambos personajes tienen 3 vidas.";
+      return true;
     }
 
     update(dt) {
@@ -525,31 +713,77 @@
       if (this.state !== "playing") return;
       this.elapsed += dt;
 
-      this.player.update(dt, this.input, this.world, (block) => {
-        this.emitBlockBreak(block);
-      });
+      if (this.input.consumePress("spawnAI")) this.spawnAI();
 
-      if (
-        this.input.consumePress("fire") &&
-        this.fireballs.filter((fireball) => fireball.active).length < FIREBALL_TUNING.maxActive
-      ) {
-        const aim = this.player.aimVector(this.input);
-        const fireball = new Fireball(this.player, aim);
-        this.fireballs.push(fireball);
-        this.emitMuzzle(fireball.x, fireball.y);
-      }
+      this.player.update(
+        dt,
+        {
+          horizontal: Number(this.input.isHeld("right")) - Number(this.input.isHeld("left")),
+          crouch: this.input.isHeld("crouch"),
+          jumpPressed: this.input.consumePress("jump"),
+        },
+        this.world,
+        (block) => this.emitBlockBreak(block),
+      );
 
-      for (const fireball of this.fireballs) {
-        fireball.update(
+      if (this.input.consumePress("fire")) this.tryFire(this.player);
+
+      if (this.aiActor?.alive) {
+        const aiControls = this.ai.decide(dt, this);
+        this.aiActor.update(
           dt,
+          aiControls,
           this.world,
-          (block, amount, x, y) => this.damageBlock(block, amount, x, y),
-          (x, y, destroyed) => this.emitImpact(x, y, destroyed),
+          (block) => this.emitBlockBreak(block),
         );
+        if (this.ai.firePressed) this.tryFire(this.aiActor);
+      } else if (this.aiActor) {
+        this.aiActor.updateTimers(dt);
       }
+
+      for (const fireball of this.fireballs) fireball.update(dt, this);
       this.fireballs = this.fireballs.filter((fireball) => fireball.active);
 
-      if (this.player.y > WORLD.height + 90) this.gameOverByVoid();
+      this.checkVoid(this.player);
+      if (this.state === "playing" && this.aiActor) this.checkVoid(this.aiActor);
+      if (this.state !== "playing") return;
+
+      if (this.player.lives === 0 && this.player.invulnerability === 0) {
+        this.endMatch("defeat", "TE QUEDASTE SIN CORAZONES");
+      } else if (
+        this.aiActor &&
+        this.aiActor.lives === 0 &&
+        this.aiActor.invulnerability === 0
+      ) {
+        this.endMatch("victory", "RIVAL IA SIN CORAZONES");
+      }
+    }
+
+    tryFire(actor) {
+      if (!actor?.alive || actor.crouching) return false;
+      const activeOwned = this.fireballs.filter(
+        (fireball) => fireball.active && fireball.ownerId === actor.id,
+      ).length;
+      if (activeOwned >= FIREBALL_TUNING.maxActivePerActor) return false;
+
+      const fireball = new Fireball(actor);
+      this.fireballs.push(fireball);
+      actor.firePoseTimer = 0.2;
+      this.emitMuzzle(fireball.x, fireball.y);
+      return true;
+    }
+
+    checkVoid(actor) {
+      if (actor.y <= WORLD.height + 90) return;
+      actor.lives = 0;
+      actor.invulnerability = 0;
+      if (actor.id === "player") this.endMatch("defeat", "CAÍDA AL VACÍO · CORAZONES 0");
+      else this.endMatch("victory", "LA IA CAYÓ AL VACÍO");
+    }
+
+    onActorDamaged(actor) {
+      const who = actor.id === "player" ? "Jugador" : "Rival IA";
+      gameStatus.textContent = `${who} recibió un impacto. Corazones: ${actor.lives}.`;
     }
 
     damageBlock(block, amount) {
@@ -558,36 +792,81 @@
       return destroyed;
     }
 
+    addParticle(options) {
+      this.particles.push(new Particle(options));
+    }
+
     emitMuzzle(x, y) {
-      for (let i = 0; i < 4; i += 1) {
-        this.particles.push(
-          new Particle(
-            x,
-            y,
-            (Math.random() - 0.5) * 130,
-            (Math.random() - 0.5) * 130,
-            i % 2 ? "#fff3a3" : "#ff6a2b",
-            4,
-            0.18,
-          ),
-        );
+      for (let i = 0; i < 5; i += 1) {
+        this.addParticle({
+          x,
+          y,
+          vx: randomRange(-80, 80),
+          vy: randomRange(-90, 50),
+          color: i % 2 ? "#fff4a8" : "#ff5a24",
+          size: randomRange(3, 6),
+          lifetime: randomRange(0.12, 0.22),
+        });
+      }
+    }
+
+    emitFireTrail(fireball) {
+      const direction = Math.sign(fireball.vx) || 1;
+      this.addParticle({
+        x: fireball.x - direction * randomRange(8, 13),
+        y: fireball.y + randomRange(-5, 5),
+        vx: -fireball.vx * randomRange(0.035, 0.08) + randomRange(-18, 18),
+        vy: randomRange(-24, 24),
+        color: Math.random() < 0.45 ? "#ffc83d" : "#ff5a24",
+        size: randomRange(3, 6),
+        lifetime: randomRange(0.13, 0.24),
+      });
+    }
+
+    emitBounce(x, y) {
+      for (let i = 0; i < 3; i += 1) {
+        this.addParticle({
+          x,
+          y,
+          vx: randomRange(-55, 55),
+          vy: randomRange(-90, -25),
+          color: "#ffc83d",
+          size: 3,
+          lifetime: 0.18,
+          gravity: 380,
+        });
       }
     }
 
     emitImpact(x, y, destroyed) {
-      const count = destroyed ? 9 : 4;
+      const count = destroyed ? 10 : 5;
       for (let i = 0; i < count; i += 1) {
-        this.particles.push(
-          new Particle(
-            x,
-            y,
-            (Math.random() - 0.5) * (destroyed ? 320 : 150),
-            -Math.random() * (destroyed ? 280 : 120),
-            destroyed ? "#d85b2b" : "#fff3a3",
-            destroyed ? 7 : 4,
-            destroyed ? 0.62 : 0.25,
-          ),
-        );
+        this.addParticle({
+          x,
+          y,
+          vx: randomRange(destroyed ? -180 : -75, destroyed ? 180 : 75),
+          vy: randomRange(destroyed ? -270 : -120, -20),
+          color: destroyed ? "#d85b2b" : "#fff3a3",
+          size: destroyed ? 7 : 4,
+          lifetime: destroyed ? 0.62 : 0.25,
+          gravity: 900,
+        });
+      }
+    }
+
+    emitActorImpact(x, y, damaged) {
+      const colors = damaged ? ["#ffffff", "#ffcf5a", "#ff5a5a"] : ["#ffffff"];
+      for (let i = 0; i < (damaged ? 12 : 4); i += 1) {
+        this.addParticle({
+          x,
+          y,
+          vx: randomRange(-220, 220),
+          vy: randomRange(-230, 90),
+          color: colors[i % colors.length],
+          size: randomRange(4, 7),
+          lifetime: randomRange(0.24, 0.48),
+          gravity: 420,
+        });
       }
     }
 
@@ -596,19 +875,17 @@
         block.type === "groundBrick"
           ? ["#e8752f", "#8f301d", "#ffc15a"]
           : ["#c84d2b", "#72251f", "#f09a3e"];
-
       for (let i = 0; i < 12; i += 1) {
-        this.particles.push(
-          new Particle(
-            block.x + Math.random() * block.width,
-            block.y + Math.random() * block.height,
-            (Math.random() - 0.5) * 340,
-            -80 - Math.random() * 320,
-            colors[i % colors.length],
-            6 + Math.random() * 6,
-            0.55 + Math.random() * 0.35,
-          ),
-        );
+        this.addParticle({
+          x: block.x + Math.random() * block.width,
+          y: block.y + Math.random() * block.height,
+          vx: randomRange(-170, 170),
+          vy: randomRange(-400, -80),
+          color: colors[i % colors.length],
+          size: randomRange(6, 12),
+          lifetime: randomRange(0.55, 0.9),
+          gravity: 900,
+        });
       }
     }
 
@@ -617,28 +894,47 @@
       this.particles = this.particles.filter((particle) => particle.life > 0);
     }
 
-    gameOverByVoid() {
-      this.lives = 0;
-      this.state = "gameOver";
+    endMatch(state, reason) {
+      if (this.state !== "playing") return;
+      this.state = state;
+      this.resultReason = reason;
       this.fireballs.length = 0;
       restartButton.hidden = false;
-      gameStatus.textContent = "Caíste al vacío. Vidas: 0. Game over.";
+      gameStatus.textContent = `${state === "victory" ? "Victoria" : "Game over"}. ${reason}.`;
     }
 
     snapshot() {
+      const actorSnapshot = (actor) =>
+        actor
+          ? {
+              id: actor.id,
+              x: Number(actor.x.toFixed(2)),
+              y: Number(actor.y.toFixed(2)),
+              width: actor.width,
+              height: actor.height,
+              vx: Number(actor.vx.toFixed(2)),
+              vy: Number(actor.vy.toFixed(2)),
+              facing: actor.facing,
+              grounded: actor.grounded,
+              crouching: actor.crouching,
+              lives: actor.lives,
+              invulnerability: Number(actor.invulnerability.toFixed(2)),
+            }
+          : null;
       return {
         state: this.state,
-        lives: this.lives,
-        player: {
-          x: Number(this.player.x.toFixed(2)),
-          y: Number(this.player.y.toFixed(2)),
-          vx: Number(this.player.vx.toFixed(2)),
-          vy: Number(this.player.vy.toFixed(2)),
-          facing: this.player.facing,
-          grounded: this.player.grounded,
-        },
+        wind: Number(this.wind.toFixed(2)),
+        cloudCount: this.clouds.length,
+        cloudSpeeds: this.clouds.map((cloud) => Number(cloud.speed.toFixed(2))),
+        player: actorSnapshot(this.player),
+        ai: actorSnapshot(this.aiActor),
         fireballCount: this.fireballs.length,
+        fireballsByOwner: {
+          player: this.fireballs.filter((fireball) => fireball.ownerId === "player").length,
+          ai: this.fireballs.filter((fireball) => fireball.ownerId === "ai").length,
+        },
         fireballs: this.fireballs.map((fireball) => ({
+          ownerId: fireball.ownerId,
           x: Number(fireball.x.toFixed(2)),
           y: Number(fireball.y.toFixed(2)),
           vx: Number(fireball.vx.toFixed(2)),
@@ -659,38 +955,36 @@
     render() {
       this.drawSky();
       for (const cloud of this.clouds) this.drawCloud(cloud);
-      for (const block of this.world.blocks) {
-        if (block.active) this.drawBlock(block);
-      }
+      for (const block of this.world.blocks) if (block.active) this.drawBlock(block);
       for (const particle of this.particles) this.drawParticle(particle);
       for (const fireball of this.fireballs) this.drawFireball(fireball);
-      if (this.state === "playing") this.drawPlayer();
+      this.drawActor(this.player);
+      if (this.aiActor) this.drawActor(this.aiActor);
       this.drawHud();
-      if (this.state === "gameOver") this.drawGameOver();
+      if (this.state !== "playing") this.drawResult();
     }
 
     drawSky() {
-      ctx.fillStyle = "#5b8def";
+      ctx.fillStyle = "#75AADB";
       ctx.fillRect(0, 0, WORLD.width, WORLD.height);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.045)";
-      ctx.fillRect(0, 0, WORLD.width, 210);
     }
 
     drawCloud(cloud) {
+      const variantOffset = cloud.variant * 7;
       ctx.save();
       ctx.translate(Math.round(cloud.x), Math.round(cloud.y));
       ctx.scale(cloud.scale, cloud.scale);
-      ctx.fillStyle = "#173b72";
-      ctx.fillRect(14, 31, 91, 24);
-      ctx.fillRect(27, 17, 62, 37);
-      ctx.fillRect(43, 8, 31, 45);
+      ctx.fillStyle = "rgba(37, 89, 133, 0.3)";
+      ctx.fillRect(13, 35, 92 + variantOffset, 19);
+      ctx.fillRect(29, 22, 59 + variantOffset, 31);
+      ctx.fillRect(47 + variantOffset / 2, 10, 31, 43);
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(12, 27, 91, 22);
-      ctx.fillRect(24, 15, 64, 34);
-      ctx.fillRect(42, 7, 31, 42);
-      ctx.fillStyle = "#bfeeff";
-      ctx.fillRect(20, 42, 75, 7);
-      ctx.fillRect(32, 34, 56, 6);
+      ctx.fillRect(10, 30, 94 + variantOffset, 19);
+      ctx.fillRect(24, 18, 65 + variantOffset, 31);
+      ctx.fillRect(43 + variantOffset / 2, 7, 34, 42);
+      ctx.fillStyle = "#d8f2ff";
+      ctx.fillRect(18, 43, 78 + variantOffset, 6);
+      ctx.fillRect(31, 35, 53 + variantOffset, 5);
       ctx.restore();
     }
 
@@ -756,62 +1050,135 @@
       ctx.restore();
     }
 
-    drawPlayer() {
-      const player = this.player;
-      const x = Math.round(player.x);
-      const y = Math.round(player.y);
-      const step = player.grounded ? Math.sin(player.walkCycle) * 3 : 0;
-      const aim = player.aimVector(this.input);
+    drawActor(actor) {
+      if (!actor || (actor.invulnerability > 0 && Math.floor(actor.invulnerability * 22) % 2 === 0)) {
+        return;
+      }
 
+      const colors = actor.appearance;
+      const x = Math.round(actor.x + actor.width / 2);
+      const y = Math.round(actor.y);
       ctx.save();
-      ctx.translate(x + player.width / 2, y);
-      ctx.scale(player.facing, 1);
+      ctx.translate(x, y);
+      ctx.scale(actor.facing, 1);
 
-      ctx.fillStyle = "#132038";
-      ctx.fillRect(-14, 49 + Math.max(0, step), 12, 7);
-      ctx.fillRect(3, 49 + Math.max(0, -step), 12, 7);
-      ctx.fillStyle = "#20375f";
-      ctx.fillRect(-11, 34, 10, 18 + step);
-      ctx.fillRect(2, 34, 10, 18 - step);
-      ctx.fillStyle = "#16a6a1";
-      ctx.fillRect(-15, 19, 30, 21);
-      ctx.fillStyle = "#63d7c7";
-      ctx.fillRect(-11, 21, 22, 5);
+      if (actor.crouching) {
+        this.drawCrouchingActor(actor, colors);
+        ctx.restore();
+        return;
+      }
 
-      ctx.save();
-      const localAimX = aim.x * player.facing;
-      ctx.translate(10, 25);
-      ctx.rotate(Math.atan2(aim.y, localAimX));
-      ctx.fillStyle = "#f4c28a";
-      ctx.fillRect(0, -4, 18, 8);
-      ctx.fillStyle = "#fff3a3";
-      ctx.fillRect(16, -5, 7, 10);
+      const walking = actor.grounded && Math.abs(actor.vx) > 15;
+      const walkFrame = Math.floor(actor.animationTime * 11) % 4;
+      const legOffsets = walking ? [[-4, 4], [-1, 1], [4, -4], [1, -1]][walkFrame] : [0, 0];
+      const bob = walking ? (walkFrame % 2) : Math.round(Math.sin(actor.animationTime * 3) * 0.5);
+      const airborne = !actor.grounded;
+      const firing = actor.firePoseTimer > 0;
+
+      // Piernas y calzado.
+      ctx.fillStyle = colors.pants;
+      if (airborne) {
+        ctx.fillRect(-13, 54 + bob, 12, 14);
+        ctx.fillRect(2, 52 + bob, 11, 11);
+      } else {
+        ctx.fillRect(-12, 52 + bob, 10, 20 + legOffsets[0]);
+        ctx.fillRect(2, 52 + bob, 10, 20 + legOffsets[1]);
+      }
+      ctx.fillStyle = colors.shoes;
+      ctx.fillRect(-15, airborne ? 66 : 68 + legOffsets[0], 15, 8);
+      ctx.fillRect(2, airborne ? 62 : 68 + legOffsets[1], 15, 8);
+
+      // Torso por capas: camisa, luz y tirantes.
+      ctx.fillStyle = colors.shirt;
+      ctx.fillRect(-15, 28 + bob, 30, 29);
+      ctx.fillStyle = colors.shirtLight;
+      ctx.fillRect(-10, 30 + bob, 18, 5);
+      ctx.fillStyle = colors.pants;
+      ctx.fillRect(-11, 43 + bob, 22, 15);
+      ctx.fillRect(-10, 34 + bob, 5, 12);
+      ctx.fillRect(5, 34 + bob, 5, 12);
+      ctx.fillStyle = colors.accent;
+      ctx.fillRect(-7, 42 + bob, 4, 4);
+      ctx.fillRect(4, 42 + bob, 4, 4);
+
+      // Brazos con poses de caminar, salto y disparo.
+      ctx.fillStyle = colors.skin;
+      if (firing) {
+        ctx.fillRect(12, 31 + bob, 20, 8);
+        ctx.fillStyle = colors.skinLight;
+        ctx.fillRect(29, 29 + bob, 7, 11);
+        ctx.fillStyle = colors.skin;
+        ctx.fillRect(-20, 31 + bob, 7, 20);
+      } else if (airborne) {
+        ctx.fillRect(11, 24 + bob, 8, 19);
+        ctx.fillRect(-19, 25 + bob, 8, 18);
+        ctx.fillStyle = colors.skinLight;
+        ctx.fillRect(12, 21 + bob, 8, 8);
+      } else {
+        const armSwing = walking ? legOffsets[1] : 0;
+        ctx.fillRect(12, 32 + bob + armSwing, 8, 21);
+        ctx.fillRect(-20, 32 + bob - armSwing, 8, 21);
+      }
+
+      // Cabeza y cabello originales, independientes de la ropa.
+      ctx.fillStyle = colors.skin;
+      ctx.fillRect(-12, 7 + bob, 25, 23);
+      ctx.fillStyle = colors.skinLight;
+      ctx.fillRect(4, 11 + bob, 11, 11);
+      ctx.fillStyle = colors.hair;
+      ctx.fillRect(-14, 3 + bob, 24, 8);
+      ctx.fillRect(-14, 9 + bob, 7, 12);
+      ctx.fillRect(-8, 1 + bob, 6, 5);
+      ctx.fillRect(1, 0 + bob, 6, 5);
+      ctx.fillStyle = "#172238";
+      ctx.fillRect(8, 13 + bob, 4, 4);
+      ctx.fillRect(12, 23 + bob, 5, 3);
+      ctx.fillStyle = colors.skinLight;
+      ctx.fillRect(-7, 25 + bob, 12, 4);
       ctx.restore();
+    }
 
-      ctx.fillStyle = "#f4c28a";
-      ctx.fillRect(-11, 4, 22, 17);
-      ctx.fillStyle = "#40265e";
-      ctx.fillRect(-14, 0, 28, 8);
-      ctx.fillRect(-14, 7, 7, 9);
-      ctx.fillStyle = "#fff3a3";
-      ctx.fillRect(5, 10, 5, 4);
-      ctx.fillStyle = "#132038";
-      ctx.fillRect(8, 11, 3, 3);
-      ctx.restore();
+    drawCrouchingActor(actor, colors) {
+      const firing = actor.firePoseTimer > 0;
+      ctx.fillStyle = colors.shoes;
+      ctx.fillRect(-15, 32, 15, 7);
+      ctx.fillRect(3, 32, 14, 7);
+      ctx.fillStyle = colors.pants;
+      ctx.fillRect(-12, 25, 25, 10);
+      ctx.fillStyle = colors.shirt;
+      ctx.fillRect(-15, 17, 29, 13);
+      ctx.fillStyle = colors.shirtLight;
+      ctx.fillRect(-9, 18, 14, 4);
+      ctx.fillStyle = colors.skin;
+      if (firing) ctx.fillRect(12, 20, 22, 7);
+      else ctx.fillRect(11, 21, 8, 10);
+      ctx.fillRect(-11, 3, 24, 18);
+      ctx.fillStyle = colors.skinLight;
+      ctx.fillRect(5, 7, 10, 9);
+      ctx.fillStyle = colors.hair;
+      ctx.fillRect(-13, 0, 23, 7);
+      ctx.fillRect(-13, 6, 6, 9);
+      ctx.fillRect(-3, 0, 5, 3);
+      ctx.fillStyle = "#172238";
+      ctx.fillRect(8, 9, 4, 4);
     }
 
     drawFireball(fireball) {
       ctx.save();
       ctx.translate(Math.round(fireball.x), Math.round(fireball.y));
       ctx.rotate(fireball.spin);
-      ctx.fillStyle = "#8c241d";
-      ctx.fillRect(-10, -10, 20, 20);
-      ctx.fillStyle = "#ff5a24";
-      ctx.fillRect(-8, -8, 16, 16);
-      ctx.fillStyle = "#ffc53d";
-      ctx.fillRect(-5, -7, 10, 14);
-      ctx.fillStyle = "#fff8c5";
-      ctx.fillRect(-3, -5, 6, 8);
+      ctx.fillStyle = "#8e251f";
+      ctx.fillRect(-9, -12, 18, 24);
+      ctx.fillRect(-12, -9, 24, 18);
+      ctx.fillRect(-14, -4, 28, 8);
+      ctx.fillStyle = "#ff4b22";
+      ctx.fillRect(-8, -9, 16, 18);
+      ctx.fillRect(-10, -6, 20, 12);
+      ctx.fillStyle = "#ffc83d";
+      ctx.fillRect(-6, -7, 12, 14);
+      ctx.fillRect(-8, -4, 16, 8);
+      ctx.fillStyle = "#fff7c2";
+      ctx.fillRect(-3, -5, 7, 9);
       ctx.restore();
     }
 
@@ -821,49 +1188,95 @@
       ctx.fillRect(
         Math.round(particle.x - particle.size / 2),
         Math.round(particle.y - particle.size / 2),
-        particle.size,
-        particle.size,
+        Math.ceil(particle.size),
+        Math.ceil(particle.size),
       );
       ctx.globalAlpha = 1;
     }
 
-    drawHud() {
+    drawPixelHeart(x, y, filled, alpha = 1) {
       ctx.save();
-      ctx.fillStyle = "rgba(7, 17, 31, 0.76)";
-      ctx.fillRect(18, 17, 178, 44);
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(18, 17, 178, 44);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = '700 24px "Courier New", monospace';
-      ctx.textBaseline = "middle";
-      ctx.fillText(`VIDAS  ${this.lives}`, 33, 40);
-
-      if (this.elapsed < 8 && this.state === "playing") {
-        const alpha = this.elapsed > 6 ? (8 - this.elapsed) / 2 : 1;
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = "rgba(7, 17, 31, 0.76)";
-        ctx.fillRect(315, 18, 650, 42);
-        ctx.strokeStyle = "rgba(255,255,255,0.85)";
-        ctx.strokeRect(315, 18, 650, 42);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = '700 18px "Courier New", monospace';
-        ctx.textAlign = "center";
-        ctx.fillText("A/D MOVER · W/S APUNTAR · E FUEGO · ESPACIO SALTAR", 640, 39);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "rgba(7, 17, 31, 0.72)";
+      ctx.fillRect(x - 3, y - 3, 30, 29);
+      ctx.fillStyle = filled ? "#e9424d" : "rgba(255,255,255,0.2)";
+      ctx.fillRect(x + 3, y, 7, 7);
+      ctx.fillRect(x + 15, y, 7, 7);
+      ctx.fillRect(x, y + 5, 25, 8);
+      ctx.fillRect(x + 4, y + 13, 17, 6);
+      ctx.fillRect(x + 8, y + 19, 9, 5);
+      if (filled) {
+        ctx.fillStyle = "#ff9da4";
+        ctx.fillRect(x + 4, y + 4, 5, 4);
       }
       ctx.restore();
     }
 
-    drawGameOver() {
-      ctx.fillStyle = "rgba(7, 17, 31, 0.72)";
+    drawHearts(actor, startX, alignRight = false) {
+      if (!actor) return;
+      ctx.save();
+      ctx.fillStyle = "#ffffff";
+      ctx.font = '700 16px "Courier New", monospace';
+      ctx.textBaseline = "top";
+      ctx.textAlign = alignRight ? "right" : "left";
+      ctx.fillText(actor.id === "player" ? "VOS" : "IA", startX, 17);
+      const direction = alignRight ? -1 : 1;
+      const heartBase = startX + (alignRight ? -24 : 0);
+      for (let index = 0; index < 3; index += 1) {
+        const filled = index < actor.lives;
+        const flashing = index === actor.lostHeartIndex && actor.lostHeartTimer > 0;
+        const flashVisible = Math.floor(actor.lostHeartTimer * 28) % 2 === 0;
+        const x = heartBase + direction * index * 34 + (alignRight ? -25 : 0);
+        this.drawPixelHeart(x, 39, filled || (flashing && flashVisible), flashing ? 0.95 : 1);
+      }
+      ctx.restore();
+    }
+
+    drawHud() {
+      this.drawHearts(this.player, 22);
+      if (this.aiActor) this.drawHearts(this.aiActor, WORLD.width - 22, true);
+
+      ctx.save();
+      if (this.elapsed < 9 && this.state === "playing") {
+        const alpha = this.elapsed > 7 ? (9 - this.elapsed) / 2 : 1;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = "rgba(7, 17, 31, 0.76)";
+        ctx.fillRect(250, 18, 780, 43);
+        ctx.strokeStyle = "rgba(255,255,255,0.9)";
+        ctx.strokeRect(250, 18, 780, 43);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = '700 17px "Courier New", monospace';
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(
+          "A/D MOVER · S AGACHAR · E FUEGO · ESPACIO SALTAR · ENTER IA",
+          WORLD.width / 2,
+          39,
+        );
+      } else if (!this.aiActor && this.state === "playing") {
+        const pulse = 0.7 + Math.sin(this.elapsed * 4) * 0.25;
+        ctx.globalAlpha = pulse;
+        ctx.fillStyle = "rgba(7, 17, 31, 0.72)";
+        ctx.fillRect(510, 20, 260, 36);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = '700 16px "Courier New", monospace';
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("ENTER · ACTIVAR RIVAL IA", 640, 38);
+      }
+      ctx.restore();
+    }
+
+    drawResult() {
+      ctx.fillStyle = "rgba(7, 17, 31, 0.73)";
       ctx.fillRect(0, 0, WORLD.width, WORLD.height);
       ctx.textAlign = "center";
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = this.state === "victory" ? "#fff3a3" : "#ffffff";
       ctx.font = '700 66px "Courier New", monospace';
-      ctx.fillText("GAME OVER", WORLD.width / 2, 304);
-      ctx.fillStyle = "#fff3a3";
-      ctx.font = '700 28px "Courier New", monospace';
-      ctx.fillText("CAÍDA AL VACÍO · VIDAS 0", WORLD.width / 2, 353);
+      ctx.fillText(this.state === "victory" ? "GANASTE" : "GAME OVER", WORLD.width / 2, 304);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = '700 27px "Courier New", monospace';
+      ctx.fillText(this.resultReason, WORLD.width / 2, 354);
       ctx.textAlign = "start";
     }
   }
@@ -895,10 +1308,14 @@
   restartButton.addEventListener("click", () => game.reset());
   canvas.addEventListener("pointerdown", () => canvas.focus({ preventScroll: true }));
 
-  // API de solo lectura para verificar el motor sin agregar controles de depuracion al juego.
   window.__MVL_DEBUG__ = Object.freeze({
     snapshot: () => game.snapshot(),
     reset: () => game.reset(),
+    spawnAI: () => game.spawnAI(),
+    damagePlayer: () => game.player.takeHit(1),
+    dropPlayer: () => {
+      game.player.y = WORLD.height + 100;
+    },
   });
 
   loadingMessage.hidden = true;
