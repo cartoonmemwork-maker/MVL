@@ -1,0 +1,102 @@
+:root {
+  color-scheme: dark;
+  font-family: "Courier New", Courier, monospace;
+  background: #07111f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #07111f;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.game-shell {
+  position: relative;
+  width: min(100vw, calc(100vh * 16 / 9));
+  height: min(100vh, calc(100vw * 9 / 16));
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #5b8def;
+  outline: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  touch-action: none;
+  user-select: none;
+}
+
+#game:focus-visible {
+  outline: 3px solid #fff3a3;
+  outline-offset: -3px;
+}
+
+.loading-message {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  margin: 0;
+  padding: 10px 14px;
+  transform: translate(-50%, -50%);
+  color: #ffffff;
+  background: rgba(7, 17, 31, 0.78);
+  border: 2px solid #ffffff;
+  font-size: clamp(12px, 2vw, 20px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.restart-button {
+  position: absolute;
+  left: 50%;
+  top: 61%;
+  transform: translate(-50%, -50%);
+  min-width: 190px;
+  padding: 12px 18px;
+  color: #07111f;
+  background: #fff3a3;
+  border: 3px solid #07111f;
+  border-radius: 0;
+  font: 700 clamp(12px, 1.7vw, 20px) / 1 "Courier New", Courier, monospace;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 rgba(7, 17, 31, 0.7);
+}
+
+.restart-button:hover,
+.restart-button:focus-visible {
+  background: #ffffff;
+  outline: 3px solid #ffffff;
+  outline-offset: 3px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
