@@ -118,6 +118,12 @@
     if (value > target) return Math.max(value - amount, target);
     return target;
   };
+  const visualHeartHalf = (half, mirrored) =>
+    mirrored ? (half === "left" ? "right" : "left") : half;
+  const groundedShoeYs = (legOffsets) => {
+    const base = 72 - Math.max(legOffsets[0], legOffsets[1]);
+    return [base + legOffsets[0], base + legOffsets[1]];
+  };
 
   const rectanglesOverlap = (a, b) =>
     a.x < b.x + b.width &&
@@ -527,6 +533,8 @@
       this.fireCooldown = 0.38;
       this.jumpQueued = false;
       this.crouchTimer = 0;
+      this.strafeTimer = 0;
+      this.strafeDirection = actor.facing;
       this.horizontal = 0;
       this.firePressed = false;
     }
@@ -535,6 +543,7 @@
       this.firePressed = false;
       this.fireCooldown = Math.max(0, this.fireCooldown - dt);
       this.crouchTimer = Math.max(0, this.crouchTimer - dt);
+      this.strafeTimer = Math.max(0, this.strafeTimer - dt);
       this.decisionTimer -= dt;
 
       if (this.decisionTimer <= 0) {
@@ -552,7 +561,14 @@
         if (canPursueStomp) this.horizontal = Math.sign(deltaX);
         else if (distance > 285) this.horizontal = Math.sign(deltaX);
         else if (distance < 105) this.horizontal = -Math.sign(deltaX);
-        else this.horizontal = Math.random() < 0.72 ? Math.sign(deltaX) : -Math.sign(deltaX);
+        else {
+          if (this.strafeTimer === 0) {
+            this.strafeTimer = randomRange(0.22, 0.46);
+            this.strafeDirection =
+              Math.random() < 0.78 ? Math.sign(deltaX) : -Math.sign(deltaX);
+          }
+          this.horizontal = this.strafeDirection;
+        }
 
         const movementDirection = this.horizontal || actor.facing;
         const frontX = actor.centerX + movementDirection * (actor.width / 2 + 30);
@@ -574,22 +590,41 @@
         );
 
         const incoming = game.fireballs
+          .filter((fireball) => fireball.active && fireball.ownerId !== actor.id)
+          .map((fireball) => {
+            const timeToActor = (actor.centerX - fireball.x) / fireball.vx;
+            const predictedY =
+              fireball.y +
+              fireball.vy * timeToActor +
+              0.5 * FIREBALL_TUNING.gravity * timeToActor * timeToActor;
+            return { fireball, timeToActor, predictedY };
+          })
           .filter(
-            (fireball) =>
-              fireball.active &&
-              fireball.ownerId !== actor.id &&
-              Math.sign(fireball.vx) === Math.sign(actor.centerX - fireball.x) &&
-              Math.abs(actor.centerX - fireball.x) < 270 &&
-              fireball.y > actor.y - 12 &&
-              fireball.y < actor.bottom + 12,
+            ({ fireball, timeToActor, predictedY }) =>
+              Number.isFinite(timeToActor) &&
+              timeToActor > 0 &&
+              timeToActor < 0.72 &&
+              predictedY + fireball.radius > actor.y - 8 &&
+              predictedY - fireball.radius < actor.bottom + 8,
           )
-          .sort(
-            (a, b) => Math.abs(actor.centerX - a.x) - Math.abs(actor.centerX - b.x),
-          )[0];
+          .sort((a, b) => a.timeToActor - b.timeToActor)[0];
 
-        if (incoming && actor.grounded) {
-          if (incoming.y < actor.y + 45) this.crouchTimer = 0.42;
-          else this.jumpQueued = true;
+        const stompThreat =
+          actor.grounded &&
+          target.vy > 110 &&
+          target.bottom < actor.y + 14 &&
+          target.bottom > actor.y - 190 &&
+          Math.abs(target.centerX + target.vx * 0.16 - actor.centerX) < 55;
+
+        if (stompThreat && actor.forcedCrouchTimer === 0) {
+          this.crouchTimer = Math.max(this.crouchTimer, 0.34);
+          this.jumpQueued = false;
+        } else if (incoming && actor.grounded) {
+          if (incoming.predictedY < actor.y + actor.height * 0.48) {
+            this.crouchTimer = Math.max(this.crouchTimer, 0.38);
+          } else {
+            this.jumpQueued = true;
+          }
         }
 
         const offensiveJump =
@@ -600,10 +635,38 @@
         if (
           actor.grounded &&
           actor.forcedCrouchTimer === 0 &&
+          !stompThreat &&
           (holeAhead || obstacleAhead || target.y < actor.y - 75 || offensiveJump)
         ) {
           this.jumpQueued = true;
           this.crouchTimer = 0;
+        }
+
+        if (!actor.grounded && actor.vy > 80) {
+          const projectedLandingX = actor.centerX + actor.vx * 0.22;
+          const landingBlock = game.world.blocks
+            .filter(
+              (block) =>
+                block.active &&
+                block.y >= actor.bottom - 4 &&
+                block.y <= actor.bottom + 250 &&
+                Math.abs(block.x + block.width / 2 - projectedLandingX) < 310,
+            )
+            .sort((first, second) => {
+              const firstScore =
+                first.y - actor.bottom +
+                Math.abs(first.x + first.width / 2 - projectedLandingX) * 0.45;
+              const secondScore =
+                second.y - actor.bottom +
+                Math.abs(second.x + second.width / 2 - projectedLandingX) * 0.45;
+              return firstScore - secondScore;
+            })[0];
+          if (landingBlock) {
+            const landingDirection = Math.sign(
+              landingBlock.x + landingBlock.width / 2 - actor.centerX,
+            );
+            if (landingDirection !== 0) this.horizontal = landingDirection;
+          }
         }
 
         const flightTime = distance / FIREBALL_TUNING.launchSpeed;
@@ -615,6 +678,8 @@
         if (
           this.fireCooldown <= 0 &&
           actor.forcedCrouchTimer === 0 &&
+          this.crouchTimer === 0 &&
+          target.invulnerability === 0 &&
           distance < 800 &&
           usefulShot
         ) {
@@ -623,14 +688,9 @@
           this.fireCooldown = randomRange(0.38, 0.68);
         }
 
-        const projectileWall = game.fireballs.some(
-          (fireball) =>
-            fireball.active &&
-            fireball.ownerId !== actor.id &&
-            Math.abs(fireball.x - actor.centerX) < 90 &&
-            Math.abs(fireball.y - actor.centerY) < 75,
-        );
-        if (projectileWall && actor.grounded && this.crouchTimer === 0) this.jumpQueued = true;
+        if (incoming && incoming.timeToActor < 0.24 && actor.grounded && this.crouchTimer === 0) {
+          this.jumpQueued = true;
+        }
       }
 
       const controls = {
@@ -833,7 +893,7 @@
       this.elapsed = 0;
       this.input.clear();
       restartButton.hidden = true;
-      gameStatus.textContent = "Etapa iniciada. Tenés 10 puntos de vida. Enter activa al rival IA.";
+      gameStatus.textContent = "Beta 0.5 iniciada. Tenés 10 puntos de vida. Enter activa al rival IA.";
       canvas.focus({ preventScroll: true });
     }
 
@@ -1385,6 +1445,7 @@
       const walking = actor.grounded && Math.abs(actor.vx) > 15;
       const walkFrame = Math.floor(actor.animationTime * 11) % 4;
       const legOffsets = walking ? [[-4, 4], [-1, 1], [4, -4], [1, -1]][walkFrame] : [0, 0];
+      const shoeYs = groundedShoeYs(legOffsets);
       const bob = walking ? (walkFrame % 2) : Math.round(Math.sin(actor.animationTime * 3) * 0.5);
       const airborne = !actor.grounded;
       const firing = actor.firePoseTimer > 0;
@@ -1399,8 +1460,8 @@
         ctx.fillRect(2, 52 + bob, 10, 20 + legOffsets[1]);
       }
       ctx.fillStyle = colors.shoes;
-      ctx.fillRect(-15, airborne ? 66 : 68 + legOffsets[0], 15, 8);
-      ctx.fillRect(2, airborne ? 62 : 68 + legOffsets[1], 15, 8);
+      ctx.fillRect(-15, airborne ? 66 : shoeYs[0], 15, 8);
+      ctx.fillRect(2, airborne ? 62 : shoeYs[1], 15, 8);
 
       // Torso por capas: camisa, luz y tirantes.
       ctx.fillStyle = colors.shirt;
@@ -1455,8 +1516,8 @@
     drawCrouchingActor(actor, colors) {
       const firing = actor.firePoseTimer > 0;
       ctx.fillStyle = colors.shoes;
-      ctx.fillRect(-15, 32, 15, 7);
-      ctx.fillRect(3, 32, 14, 7);
+      ctx.fillRect(-15, 33, 15, 7);
+      ctx.fillRect(3, 33, 14, 7);
       ctx.fillStyle = colors.pants;
       ctx.fillRect(-12, 25, 25, 10);
       ctx.fillStyle = colors.shirt;
@@ -1527,17 +1588,20 @@
       ctx.restore();
     }
 
-    drawPixelHeart(x, y, units, flashingHalves = [], flashVisible = false) {
+    drawPixelHeart(x, y, units, flashingHalves = [], flashVisible = false, mirrored = false) {
+      const firstHalf = visualHeartHalf("left", mirrored);
+      const secondHalf = visualHeartHalf("right", mirrored);
       this.drawHeartShape(x, y, "rgba(7, 17, 31, 0.3)");
-      if (units >= 1) this.drawHeartHalf(x, y, "left", "#e9424d");
-      if (units >= 2) this.drawHeartHalf(x, y, "right", "#e9424d");
+      if (units >= 1) this.drawHeartHalf(x, y, firstHalf, "#e9424d");
+      if (units >= 2) this.drawHeartHalf(x, y, secondHalf, "#e9424d");
       if (units > 0) {
         ctx.fillStyle = "#ff9da4";
-        ctx.fillRect(x + 4, y + 4, 5, 4);
+        ctx.fillRect(x + (mirrored ? 16 : 4), y + 4, 5, 4);
       }
       if (flashVisible) {
         for (const half of flashingHalves) {
-          this.drawHeartHalf(x, y, half, "#ff7882", 0.95);
+          const visualHalf = visualHeartHalf(half, mirrored);
+          this.drawHeartHalf(x, y, visualHalf, "#ff7882", 0.95);
         }
       }
     }
@@ -1560,6 +1624,7 @@
           units,
           flashingHalves,
           flashVisible,
+          alignRight,
         );
       }
     }
@@ -1645,6 +1710,31 @@
     reset: () => game.reset(),
     spawnAI: () => game.spawnAI(),
     damagePlayer: (amount = 1) => game.player.takeDamage(amount, 1, "projectile"),
+    visualHeartHalf,
+    groundedShoeBottoms: (legOffsets = [0, 0]) =>
+      groundedShoeYs(legOffsets).map((shoeY) => shoeY + 8),
+    probeAIStompDefense: () => {
+      game.reset();
+      game.spawnAI();
+      game.player.x = game.aiActor.x;
+      game.player.y = game.aiActor.y - game.player.height - 30;
+      game.player.vx = 0;
+      game.player.vy = 420;
+      game.ai.decisionTimer = 0;
+      return game.ai.decide(WORLD.fixedStep, game);
+    },
+    probeAIProjectileDefense: (upper = true) => {
+      game.reset();
+      game.spawnAI();
+      const fireball = new Fireball(game.player);
+      fireball.x = game.aiActor.centerX - 120;
+      fireball.y = game.aiActor.y + (upper ? -40 : 25);
+      fireball.vx = FIREBALL_TUNING.launchSpeed;
+      fireball.vy = 0;
+      game.fireballs = [fireball];
+      game.ai.decisionTimer = 0;
+      return game.ai.decide(WORLD.fixedStep, game);
+    },
     movePlayerToOpenSky: () => {
       game.player.x = 15 * WORLD.tileSize + 3;
       game.player.previousX = game.player.x;

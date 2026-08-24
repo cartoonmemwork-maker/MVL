@@ -1,6 +1,6 @@
-# MVL — Etapa 1
+# MVL — Beta 0.5
 
-Prototipo web liviano de una arena de plataformas 2D destructible. Esta versión permite validar el movimiento, el combate contra una IA y las reglas centrales de vidas y caída al vacío.
+Beta jugable y liviana de una arena de plataformas 2D destructible. La Beta 0.5 cierra la Etapa 1: valida el movimiento, el combate contra una IA y las reglas centrales de vidas y caída al vacío.
 
 ## Controles
 
@@ -15,6 +15,7 @@ Prototipo web liviano de una arena de plataformas 2D destructible. Esta versión
 
 - Cada personaje comienza con 10 puntos de vida distribuidos en 5 corazones.
 - Cada corazón representa 2 puntos y puede mostrarse completo o por la mitad.
+- Los corazones de ambos lados se consumen de forma perfectamente espejada.
 - Un impacto de proyectil elimina exactamente 1 punto de vida.
 - Saltar sobre la cabeza del rival elimina 3 puntos, lo fuerza a agacharse durante su invulnerabilidad y produce un rebote para quien cae encima.
 - Un personaje que ya está agachado bloquea por completo el daño del pisotón y no recibe invulnerabilidad por ese contacto.
@@ -27,6 +28,11 @@ Prototipo web liviano de una arena de plataformas 2D destructible. Esta versión
 - Un salto agachado puede golpear un ladrillo desde abajo, pero no lo destruye.
 - Los ladrillos del suelo tienen 6 HP y forman dos filas independientes.
 - Los proyectiles tienen gravedad, trayectoria parabólica, rebote y una estela de partículas.
+- El dibujo de pie y agachado toca exactamente la base de su hitbox, sin separación visual de la superficie.
+
+## Rival IA
+
+La IA mantiene una distancia de combate más estable, anticipa la trayectoria parabólica de proyectiles, se agacha ante pisotones previsibles, salta ante disparos bajos u obstáculos y corrige su caída hacia superficies cercanas. Sigue siendo deliberadamente vencible para esta primera beta.
 
 ## Sonido
 
