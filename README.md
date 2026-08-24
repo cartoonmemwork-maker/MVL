@@ -6,7 +6,7 @@ Prototipo web liviano de una arena de plataformas 2D destructible. Esta versión
 
 - `A`: mover a la izquierda.
 - `D`: mover a la derecha.
-- `S`: agacharse; la hitbox baja de dos celdas a una. También se puede saltar agachado.
+- `S`: agacharse; la hitbox baja de dos celdas a una. Puede activarse antes o durante el salto.
 - `E`: disparar hacia donde mira el personaje.
 - `Espacio`: saltar.
 - `Enter`: incorporar un rival controlado por IA.
@@ -17,7 +17,9 @@ Prototipo web liviano de una arena de plataformas 2D destructible. Esta versión
 - Cada corazón representa 2 puntos y puede mostrarse completo o por la mitad.
 - Un impacto de proyectil elimina exactamente 1 punto de vida.
 - Saltar sobre la cabeza del rival elimina 3 puntos, lo fuerza a agacharse durante su invulnerabilidad y produce un rebote para quien cae encima.
-- Después de recibir daño, el personaje parpadea y es invulnerable brevemente.
+- Un personaje que ya está agachado bloquea por completo el daño del pisotón y no recibe invulnerabilidad por ese contacto.
+- Después de recibir un proyectil o un pisotón válido, el personaje parpadea y es invulnerable brevemente.
+- Si se destruye el bloque que sostiene a un personaje, pierde 1 punto y recibe un impulso radial suave desde el centro del bloque.
 - Caer al vacío coloca inmediatamente la vida en 0.
 - Cada personaje puede mantener como máximo dos bolas de fuego activas.
 - Las bolas de fuego enfrentadas se anulan al colisionar y generan partículas.
@@ -28,7 +30,11 @@ Prototipo web liviano de una arena de plataformas 2D destructible. Esta versión
 
 ## Sonido
 
-Los efectos se sintetizan en tiempo real mediante Web Audio y no necesitan archivos externos. Hay sonidos diferenciados para salto, disparo, impactos contra cada tipo de ladrillo, daño a personajes, choque entre proyectiles y pisotón.
+Los efectos se sintetizan en tiempo real mediante Web Audio y no necesitan archivos externos. Hay sonidos diferenciados para salto, disparo, impactos, daño a personajes, choque entre proyectiles y pisotón. La destrucción del ladrillo flotante y la del ladrillo de suelo usan sonidos propios claramente distintos.
+
+## Cielo abierto
+
+No existe una colisión ni un descarte de proyectiles en el límite superior del escenario. La gravedad continúa actuando aunque una entidad abandone temporalmente la zona visible por arriba.
 
 ## Apariencia extensible
 
