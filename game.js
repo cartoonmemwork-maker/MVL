@@ -5,7 +5,18 @@
   const ctx = canvas.getContext("2d", { alpha: false });
   const loadingMessage = document.querySelector("#loadingMessage");
   const restartButton = document.querySelector("#restartButton");
+  const menuButton = document.querySelector("#menuButton");
   const gameStatus = document.querySelector("#gameStatus");
+  const gameShell = document.querySelector("#gameShell");
+  const menuLayer = document.querySelector("#menuLayer");
+  const fullscreenButton = document.querySelector("#fullscreenButton");
+  const settingsButton = document.querySelector("#settingsButton");
+  const characterPreview = document.querySelector("#characterPreview");
+  const levelGridElement = document.querySelector("#levelGrid");
+  const touchPad = document.querySelector("#touchPad");
+  const touchStick = document.querySelector("#touchStick");
+  const touchJump = document.querySelector("#touchJump");
+  const touchFire = document.querySelector("#touchFire");
 
   const WORLD = Object.freeze({
     width: 1280,
@@ -40,8 +51,9 @@
     launchLift: -125,
     gravity: 1450,
     bounceVelocity: 470,
-    maxLifetime: 4,
-    maxBounces: 7,
+    maxLifetime: 6,
+    maxBounces: 8,
+    bounceRetention: 0.86,
     maxActivePerActor: 2,
     trailInterval: 0.025,
   });
@@ -56,6 +68,7 @@
     pants: "#264f78",
     shoes: "#172238",
     accent: "#fff3a3",
+    accessory: "none",
   });
 
   const AI_APPEARANCE = Object.freeze({
@@ -67,6 +80,7 @@
     pants: "#52357c",
     shoes: "#251c38",
     accent: "#ffcf5a",
+    accessory: "band",
   });
 
   // El futuro editor solo elige un tipo por celda. HP y dimensiones son del motor.
@@ -102,13 +116,33 @@
     "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
   ]);
 
-  const ACTION_BY_CODE = Object.freeze({
-    KeyA: "left",
-    KeyD: "right",
-    KeyS: "crouch",
-    KeyE: "fire",
-    Space: "jump",
-    Enter: "spawnAI",
+  const CONTROL_PRESETS = Object.freeze({
+    classic: Object.freeze({
+      KeyA: "p1Left", KeyD: "p1Right", KeyS: "p1Crouch", KeyE: "p1Fire", Space: "p1Jump",
+      ArrowLeft: "p2Left", ArrowRight: "p2Right", ArrowDown: "p2Crouch", Enter: "p2Fire", ArrowUp: "p2Jump",
+    }),
+    alternate: Object.freeze({
+      ArrowLeft: "p1Left", ArrowRight: "p1Right", ArrowDown: "p1Crouch", Slash: "p1Fire", ArrowUp: "p1Jump",
+      KeyA: "p2Left", KeyD: "p2Right", KeyS: "p2Crouch", KeyE: "p2Fire", Space: "p2Jump",
+    }),
+  });
+
+  const DEFAULT_SETTINGS = Object.freeze({
+    language: "es",
+    fps: 60,
+    touchOpacity: 0.25,
+    controlPreset: "classic",
+    sound: true,
+    music: false,
+  });
+
+  const I18N = Object.freeze({
+    es: Object.freeze({
+      tagline: "ARENA DE BLOQUES DESTRUCTIBLES", play: "JUGAR", character: "PERSONAJE", editor: "EDITOR DE NIVELES", settings: "AJUSTES", soon: "PRÓXIMAMENTE", chooseMode: "ELEGÍ UN MODO", vsAi: "VS IA", localPvp: "PVP LOCAL", onlinePvp: "PVP ONLINE", stage3Soon: "ETAPA 3 · PRÓXIMAMENTE", visualOnly: "CAMBIOS SOLO VISUALES", skin: "Piel", hair: "Cabello", top: "Prenda superior", bottom: "Prenda inferior", shoes: "Calzado", accent: "Color de acento", accessory: "Accesorio", none: "Ninguno", headband: "Vincha", scarf: "Pañuelo", visor: "Visor", pauseWhenMatch: "LA PARTIDA SE PAUSA", language: "Idioma", fps: "FPS visuales", touchOpacity: "Opacidad controles táctiles", hidden: "Ocultos · no funcionan", controlPreset: "Controles de teclado", classic: "Clásicos", alternate: "Alternativos", sound: "Sonido", music: "Música", gridTypesOnly: "LA GRILLA SOLO GUARDA EL TIPO", floatingBrick: "LADRILLO FLOTANTE", groundBrick: "LADRILLO DE SUELO", eraser: "BORRADOR", testLevel: "PROBAR NIVEL", resetLevel: "RESTAURAR", jump: "SALTO", fire: "FUEGO", rematch: "REVANCHA", mainMenu: "MENÚ",
+    }),
+    en: Object.freeze({
+      tagline: "DESTRUCTIBLE BLOCK ARENA", play: "PLAY", character: "CHARACTER", editor: "LEVEL EDITOR", settings: "SETTINGS", soon: "COMING SOON", chooseMode: "CHOOSE A MODE", vsAi: "VS AI", localPvp: "LOCAL PVP", onlinePvp: "ONLINE PVP", stage3Soon: "STAGE 3 · COMING SOON", visualOnly: "VISUAL CHANGES ONLY", skin: "Skin", hair: "Hair", top: "Top", bottom: "Bottom", shoes: "Shoes", accent: "Accent color", accessory: "Accessory", none: "None", headband: "Headband", scarf: "Scarf", visor: "Visor", pauseWhenMatch: "THE MATCH IS PAUSED", language: "Language", fps: "Visual FPS", touchOpacity: "Touch controls opacity", hidden: "Hidden · disabled", controlPreset: "Keyboard controls", classic: "Classic", alternate: "Alternate", sound: "Sound", music: "Music", gridTypesOnly: "THE GRID ONLY STORES TILE TYPE", floatingBrick: "FLOATING BRICK", groundBrick: "GROUND BRICK", eraser: "ERASER", testLevel: "TEST LEVEL", resetLevel: "RESET", jump: "JUMP", fire: "FIRE", rematch: "REMATCH", mainMenu: "MENU",
+    }),
   });
 
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -123,6 +157,21 @@
   const groundedShoeYs = (legOffsets) => {
     const base = 72 - Math.max(legOffsets[0], legOffsets[1]);
     return [base + legOffsets[0], base + legOffsets[1]];
+  };
+  const readStoredJson = (key, fallback) => {
+    try {
+      const value = window.localStorage?.getItem(key);
+      return value ? { ...fallback, ...JSON.parse(value) } : { ...fallback };
+    } catch {
+      return { ...fallback };
+    }
+  };
+  const writeStoredJson = (key, value) => {
+    try { window.localStorage?.setItem(key, JSON.stringify(value)); } catch { /* Sin almacenamiento persistente. */ }
+  };
+  const normalizeGrid = (grid) => {
+    if (!Array.isArray(grid) || grid.length !== WORLD.rows) return [...LEVEL_GRID];
+    return grid.map((row) => String(row).padEnd(WORLD.columns, " ").slice(0, WORLD.columns));
   };
 
   const rectanglesOverlap = (a, b) =>
@@ -143,9 +192,10 @@
     constructor() {
       this.held = new Set();
       this.pressed = new Set();
+      this.codeMap = CONTROL_PRESETS.classic;
 
       window.addEventListener("keydown", (event) => {
-        const action = ACTION_BY_CODE[event.code];
+        const action = this.codeMap[event.code];
         if (!action) return;
         event.preventDefault();
         if (!event.repeat && !this.held.has(action)) this.pressed.add(action);
@@ -153,7 +203,7 @@
       });
 
       window.addEventListener("keyup", (event) => {
-        const action = ACTION_BY_CODE[event.code];
+        const action = this.codeMap[event.code];
         if (!action) return;
         event.preventDefault();
         this.held.delete(action);
@@ -172,6 +222,25 @@
       return true;
     }
 
+    setPreset(preset) {
+      this.codeMap = CONTROL_PRESETS[preset] || CONTROL_PRESETS.classic;
+      this.clear();
+    }
+
+    setVirtual(action, held) {
+      if (held) this.held.add(action);
+      else this.held.delete(action);
+    }
+
+    pressVirtual(action) {
+      if (!this.held.has(action)) this.pressed.add(action);
+      this.held.add(action);
+    }
+
+    releaseVirtual(action) {
+      this.held.delete(action);
+    }
+
     clear() {
       this.held.clear();
       this.pressed.clear();
@@ -182,13 +251,15 @@
     constructor() {
       this.context = null;
       this.enabled = true;
+      this.musicEnabled = false;
+      this.musicTimer = 0;
+      this.musicStep = 0;
       const unlock = () => this.ensureContext();
       window.addEventListener("keydown", unlock);
       window.addEventListener("pointerdown", unlock);
     }
 
     ensureContext() {
-      if (!this.enabled) return null;
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) return null;
       if (!this.context) this.context = new AudioContextClass();
@@ -196,7 +267,8 @@
       return this.context;
     }
 
-    tone({ frequency, endFrequency = frequency, duration, type = "square", volume = 0.05, delay = 0 }) {
+    tone({ frequency, endFrequency = frequency, duration, type = "square", volume = 0.05, delay = 0, music = false }) {
+      if ((music && !this.musicEnabled) || (!music && !this.enabled)) return;
       const context = this.ensureContext();
       if (!context) return;
       const start = context.currentTime + delay;
@@ -255,6 +327,17 @@
       this.tone({ frequency: 125, endFrequency: 72, duration: 0.14, type: "square", volume: 0.065 });
       this.tone({ frequency: 360, endFrequency: 620, duration: 0.11, type: "triangle", volume: 0.04, delay: 0.025 });
     }
+
+    updateMusic(dt, active) {
+      if (!this.musicEnabled || !active) return;
+      this.musicTimer -= dt;
+      if (this.musicTimer > 0) return;
+      this.musicTimer += 0.24;
+      const notes = [110, 147, 165, 196, 165, 147, 123, 147];
+      const frequency = notes[this.musicStep % notes.length];
+      this.musicStep += 1;
+      this.tone({ frequency, endFrequency: frequency, duration: 0.12, type: "triangle", volume: 0.018, music: true });
+    }
   }
 
   class Block {
@@ -293,11 +376,11 @@
   }
 
   class World {
-    constructor() {
+    constructor(grid = LEVEL_GRID) {
       this.blocks = [];
       this.blockByCell = new Map();
       let id = 0;
-      LEVEL_GRID.forEach((rowText, row) => {
+      grid.forEach((rowText, row) => {
         [...rowText].forEach((symbol, column) => {
           const type = SYMBOL_TO_TYPE[symbol];
           if (!type) return;
@@ -341,6 +424,9 @@
       this.lostHeartHalf = "right";
       this.lostHealthSegments = [];
       this.firePoseTimer = 0;
+      this.hurtPoseTimer = 0;
+      this.stompPoseTimer = 0;
+      this.skidTimer = 0;
       this.forcedCrouchTimer = 0;
       this.crouchJumping = false;
       this.animationTime = Math.random() * 2;
@@ -366,6 +452,9 @@
       this.invulnerability = Math.max(0, this.invulnerability - dt);
       this.lostHeartTimer = Math.max(0, this.lostHeartTimer - dt);
       this.firePoseTimer = Math.max(0, this.firePoseTimer - dt);
+      this.hurtPoseTimer = Math.max(0, this.hurtPoseTimer - dt);
+      this.stompPoseTimer = Math.max(0, this.stompPoseTimer - dt);
+      this.skidTimer = Math.max(0, this.skidTimer - dt);
       this.forcedCrouchTimer = Math.max(0, this.forcedCrouchTimer - dt);
       this.animationTime += dt;
     }
@@ -412,6 +501,9 @@
           ? 0
           : clamp(controls.horizontal || 0, -1, 1);
       if (horizontalInput !== 0) {
+        if (this.grounded && Math.abs(this.vx) > 150 && Math.sign(this.vx) !== horizontalInput) {
+          this.skidTimer = 0.2;
+        }
         this.facing = horizontalInput;
         this.vx = moveToward(
           this.vx,
@@ -419,6 +511,7 @@
           ACTOR_TUNING.acceleration * dt,
         );
       } else {
+        if (this.grounded && Math.abs(this.vx) > 235) this.skidTimer = 0.14;
         this.vx = moveToward(this.vx, 0, ACTOR_TUNING.deceleration * dt);
       }
 
@@ -514,7 +607,9 @@
       );
       this.lostHeartTimer = ACTOR_TUNING.lostHeartFlashTime;
       this.invulnerability = ACTOR_TUNING.invulnerabilityTime;
+      this.hurtPoseTimer = 0.3;
       if (kind === "stomp") {
+        this.stompPoseTimer = ACTOR_TUNING.invulnerabilityTime;
         this.forcedCrouchTimer = ACTOR_TUNING.invulnerabilityTime;
         this.vx = knockbackDirection * 120;
         this.vy = Math.max(0, this.vy);
@@ -530,7 +625,7 @@
     constructor(actor) {
       this.actor = actor;
       this.decisionTimer = 0;
-      this.fireCooldown = 0.38;
+      this.fireCooldown = 0.3;
       this.jumpQueued = false;
       this.crouchTimer = 0;
       this.strafeTimer = 0;
@@ -547,7 +642,7 @@
       this.decisionTimer -= dt;
 
       if (this.decisionTimer <= 0) {
-        this.decisionTimer = randomRange(0.045, 0.085);
+        this.decisionTimer = randomRange(0.03, 0.06);
         const actor = this.actor;
         const target = game.player;
         const predictedTargetX = target.centerX + target.vx * 0.2;
@@ -685,7 +780,7 @@
         ) {
           actor.facing = Math.sign(deltaX) || actor.facing;
           this.firePressed = true;
-          this.fireCooldown = randomRange(0.38, 0.68);
+          this.fireCooldown = randomRange(0.3, 0.54);
         }
 
         if (incoming && incoming.timeToActor < 0.24 && actor.grounded && this.crouchTimer === 0) {
@@ -722,6 +817,19 @@
       this.trailTimer = 0;
     }
 
+    get opacity() {
+      return clamp(1 - (this.bounces / FIREBALL_TUNING.maxBounces) * 0.78, 0.16, 1);
+    }
+
+    registerBounce(game) {
+      this.bounces += 1;
+      game.emitBounce(this.x, this.y, this.opacity);
+      if (this.bounces < FIREBALL_TUNING.maxBounces) return true;
+      this.active = false;
+      game.emitFireballDissolve(this.x, this.y);
+      return false;
+    }
+
     update(dt, game) {
       if (!this.active) return;
       this.life += dt;
@@ -746,7 +854,6 @@
 
       if (
         this.life >= FIREBALL_TUNING.maxLifetime ||
-        this.bounces > FIREBALL_TUNING.maxBounces ||
         this.x < -80 ||
         this.x > WORLD.width + 80 ||
         this.y > WORLD.height + 120
@@ -782,7 +889,9 @@
       if (this.tryDamageBlock(block, game)) return;
 
       this.x = this.vx > 0 ? block.x - this.radius : block.x + block.width + this.radius;
-      this.active = false;
+      this.vx = -this.vx * FIREBALL_TUNING.bounceRetention;
+      this.vy *= FIREBALL_TUNING.bounceRetention;
+      this.registerBounce(game);
     }
 
     moveVertical(dt, game) {
@@ -805,12 +914,14 @@
 
       if (falling) {
         this.y = block.y - this.radius;
-        this.vy = -FIREBALL_TUNING.bounceVelocity;
-        this.bounces += 1;
-        game.emitBounce(this.x, this.y);
+        this.vx *= FIREBALL_TUNING.bounceRetention;
+        this.vy = -FIREBALL_TUNING.bounceVelocity * Math.pow(FIREBALL_TUNING.bounceRetention, this.bounces);
+        this.registerBounce(game);
       } else {
         this.y = block.y + block.height + this.radius;
-        this.active = false;
+        this.vx *= FIREBALL_TUNING.bounceRetention;
+        this.vy = Math.abs(this.vy) * FIREBALL_TUNING.bounceRetention;
+        this.registerBounce(game);
       }
     }
 
@@ -871,19 +982,44 @@
     constructor() {
       this.audio = new AudioSystem();
       this.input = new InputManager();
+      this.settings = readStoredJson("mvl-beta-06-settings", DEFAULT_SETTINGS);
+      this.playerAppearance = readStoredJson("mvl-beta-06-appearance", PLAYER_APPEARANCE);
+      this.customGrid = normalizeGrid(readStoredJson("mvl-beta-06-level", { grid: LEVEL_GRID }).grid);
+      this.editorTool = "F";
+      this.resumeState = null;
+      this.mode = "solo";
+      this.renderFps = 60;
+      this.applySettings();
       this.reset();
+      this.initializeInterface();
+      this.openScreen("main", false);
     }
 
     reset() {
-      this.world = new World();
+      this.startMatch(this.mode || "solo", this.customGrid, false);
+    }
+
+    startMatch(mode = "ai", grid = this.customGrid, hideMenu = true) {
+      this.mode = mode;
+      this.world = new World(normalizeGrid(grid));
       this.player = new Actor({
         id: "player",
         x: 6 * WORLD.tileSize + 3,
         facing: 1,
-        appearance: PLAYER_APPEARANCE,
+        appearance: { ...this.playerAppearance },
       });
       this.aiActor = null;
       this.ai = null;
+      if (mode === "ai" || mode === "local") {
+        this.aiActor = new Actor({
+          id: mode === "ai" ? "ai" : "player2",
+          x: 25 * WORLD.tileSize + 3,
+          facing: -1,
+          appearance: { ...AI_APPEARANCE },
+          isAI: mode === "ai",
+        });
+        if (mode === "ai") this.ai = new RivalAI(this.aiActor);
+      }
       this.fireballs = [];
       this.particles = [];
       this.wind = this.createWind();
@@ -893,7 +1029,9 @@
       this.elapsed = 0;
       this.input.clear();
       restartButton.hidden = true;
-      gameStatus.textContent = "Beta 0.5 iniciada. Tenés 10 puntos de vida. Enter activa al rival IA.";
+      if (menuButton) menuButton.hidden = true;
+      if (hideMenu && menuLayer) menuLayer.hidden = true;
+      gameStatus.textContent = mode === "local" ? "PvP local iniciado." : mode === "ai" ? "Combate contra IA iniciado." : "Arena de prueba iniciada.";
       canvas.focus({ preventScroll: true });
     }
 
@@ -917,6 +1055,7 @@
 
     spawnAI() {
       if (this.aiActor || this.state !== "playing") return false;
+      this.mode = "ai";
       this.aiActor = new Actor({
         id: "ai",
         x: 25 * WORLD.tileSize + 3,
@@ -929,21 +1068,280 @@
       return true;
     }
 
+    applySettings() {
+      this.settings.fps = Number(this.settings.fps) === 120 ? 120 : 60;
+      this.settings.touchOpacity = [0, 0.1, 0.25, 0.5].includes(Number(this.settings.touchOpacity))
+        ? Number(this.settings.touchOpacity)
+        : DEFAULT_SETTINGS.touchOpacity;
+      this.settings.language = I18N[this.settings.language] ? this.settings.language : "es";
+      this.settings.controlPreset = CONTROL_PRESETS[this.settings.controlPreset]
+        ? this.settings.controlPreset
+        : "classic";
+      this.renderFps = this.settings.fps;
+      this.audio.enabled = Boolean(this.settings.sound);
+      this.audio.musicEnabled = Boolean(this.settings.music);
+      this.input.setPreset(this.settings.controlPreset);
+      gameShell?.style.setProperty("--touch-opacity", String(this.settings.touchOpacity));
+      gameShell?.classList.toggle("touch-hidden", this.settings.touchOpacity === 0);
+      this.translateInterface();
+      this.updateControlLegend();
+    }
+
+    saveSettings() {
+      writeStoredJson("mvl-beta-06-settings", this.settings);
+      this.applySettings();
+    }
+
+    translateInterface() {
+      const dictionary = I18N[this.settings.language] || I18N.es;
+      if (document.documentElement) document.documentElement.lang = this.settings.language;
+      document.querySelectorAll?.("[data-i18n]").forEach((element) => {
+        const translation = dictionary[element.dataset.i18n];
+        if (translation) element.textContent = translation;
+      });
+    }
+
+    updateControlLegend() {
+      const element = document.querySelector?.("#controlLegend");
+      if (!element) return;
+      const alternate = this.settings.controlPreset === "alternate";
+      element.textContent = alternate
+        ? "P1: ←/→ mover · ↓ agachar · ↑ saltar · / disparar | P2: A/D mover · S agachar · Espacio saltar · E disparar"
+        : "P1: A/D mover · S agachar · Espacio saltar · E disparar | P2: ←/→ mover · ↓ agachar · ↑ saltar · Enter disparar";
+    }
+
+    openScreen(name, pauseMatch = true) {
+      if (!menuLayer) return;
+      if (name === "settings" && pauseMatch && this.state === "playing") {
+        this.resumeState = "playing";
+        this.state = "paused";
+      } else if (name === "main") {
+        this.state = "menu";
+        this.resumeState = null;
+      }
+      menuLayer.hidden = false;
+      menuLayer.querySelectorAll("[data-screen]").forEach((screen) => {
+        screen.hidden = screen.dataset.screen !== name;
+      });
+      if (name === "character") this.drawCharacterPreview();
+      if (name === "editor") this.buildEditorGrid();
+      this.input.clear();
+    }
+
+    closeSettings() {
+      if (this.resumeState === "playing") {
+        this.state = "playing";
+        this.resumeState = null;
+        menuLayer.hidden = true;
+        canvas.focus({ preventScroll: true });
+      } else {
+        this.openScreen("main", false);
+      }
+    }
+
+    returnToMenu() {
+      restartButton.hidden = true;
+      if (menuButton) menuButton.hidden = true;
+      this.fireballs.length = 0;
+      this.openScreen("main", false);
+    }
+
+    initializeInterface() {
+      document.querySelectorAll?.("[data-open-screen]").forEach((button) => {
+        button.addEventListener("click", () => this.openScreen(button.dataset.openScreen, false));
+      });
+      document.querySelectorAll?.("[data-start-mode]").forEach((button) => {
+        button.addEventListener("click", () => this.startMatch(button.dataset.startMode));
+      });
+      document.querySelector?.("[data-close-settings]")?.addEventListener("click", () => this.closeSettings());
+      settingsButton?.addEventListener("click", () => this.openScreen("settings", true));
+      fullscreenButton?.addEventListener("click", async () => {
+        try {
+          if (document.fullscreenElement) await document.exitFullscreen();
+          else await gameShell.requestFullscreen();
+        } catch { gameStatus.textContent = "El navegador no permitió pantalla completa."; }
+      });
+      menuButton?.addEventListener("click", () => this.returnToMenu());
+
+      const bindSetting = (selector, key, transform = (value) => value) => {
+        const element = document.querySelector?.(selector);
+        if (!element) return;
+        if (element.type === "checkbox") element.checked = Boolean(this.settings[key]);
+        else element.value = String(this.settings[key]);
+        element.addEventListener("change", () => {
+          this.settings[key] = element.type === "checkbox" ? element.checked : transform(element.value);
+          this.saveSettings();
+        });
+      };
+      bindSetting("#languageSelect", "language");
+      bindSetting("#fpsSelect", "fps", Number);
+      bindSetting("#touchOpacitySelect", "touchOpacity", Number);
+      bindSetting("#controlPresetSelect", "controlPreset");
+      bindSetting("#soundToggle", "sound");
+      bindSetting("#musicToggle", "music");
+
+      document.querySelectorAll?.("[data-appearance]").forEach((input) => {
+        const key = input.dataset.appearance;
+        input.value = this.playerAppearance[key] || input.value;
+        input.addEventListener("input", () => {
+          this.playerAppearance[key] = input.value;
+          if (key === "skin") this.playerAppearance.skinLight = input.value;
+          if (key === "shirt") this.playerAppearance.shirtLight = input.value;
+          writeStoredJson("mvl-beta-06-appearance", this.playerAppearance);
+          this.drawCharacterPreview();
+        });
+      });
+      const accessory = document.querySelector?.("#accessorySelect");
+      if (accessory) {
+        accessory.value = this.playerAppearance.accessory || "none";
+        accessory.addEventListener("change", () => {
+          this.playerAppearance.accessory = accessory.value;
+          writeStoredJson("mvl-beta-06-appearance", this.playerAppearance);
+          this.drawCharacterPreview();
+        });
+      }
+
+      document.querySelectorAll?.("[data-editor-tool]").forEach((button) => {
+        button.addEventListener("click", () => {
+          this.editorTool = button.getAttribute("data-editor-tool");
+          document.querySelectorAll("[data-editor-tool]").forEach((candidate) => candidate.classList.toggle("selected", candidate === button));
+        });
+      });
+      document.querySelector?.("#testLevelButton")?.addEventListener("click", () => this.startMatch("ai", this.customGrid));
+      document.querySelector?.("#resetLevelButton")?.addEventListener("click", () => {
+        this.customGrid = [...LEVEL_GRID];
+        writeStoredJson("mvl-beta-06-level", { grid: this.customGrid });
+        this.buildEditorGrid();
+      });
+
+      this.initializeTouchControls();
+      this.applySettings();
+    }
+
+    drawCharacterPreview() {
+      if (!characterPreview) return;
+      const preview = characterPreview.getContext("2d");
+      const c = this.playerAppearance;
+      preview.imageSmoothingEnabled = false;
+      preview.clearRect(0, 0, characterPreview.width, characterPreview.height);
+      preview.fillStyle = "#75aadb"; preview.fillRect(0, 0, 240, 300);
+      preview.save(); preview.translate(120, 40); preview.scale(2.4, 2.4);
+      preview.fillStyle = c.shoes; preview.fillRect(-15, 72, 15, 8); preview.fillRect(2, 72, 15, 8);
+      preview.fillStyle = c.pants; preview.fillRect(-12, 51, 10, 22); preview.fillRect(2, 51, 10, 22); preview.fillRect(-11, 43, 22, 15);
+      preview.fillStyle = c.shirt; preview.fillRect(-15, 28, 30, 29);
+      preview.fillStyle = c.accent; preview.fillRect(-8, 41, 5, 5); preview.fillRect(4, 41, 5, 5);
+      preview.fillStyle = c.skin; preview.fillRect(-20, 32, 8, 21); preview.fillRect(12, 32, 8, 21); preview.fillRect(-12, 7, 25, 23); preview.fillRect(4, 11, 11, 11);
+      preview.fillStyle = c.hair; preview.fillRect(-14, 3, 24, 8); preview.fillRect(-14, 9, 7, 12); preview.fillRect(-8, 1, 6, 5); preview.fillRect(1, 0, 6, 5);
+      preview.fillStyle = "#172238"; preview.fillRect(8, 13, 4, 4);
+      this.drawAccessory(preview, c, 0);
+      preview.restore();
+    }
+
+    buildEditorGrid() {
+      if (!levelGridElement || !document.createElement) return;
+      levelGridElement.textContent = "";
+      for (let row = 0; row < WORLD.rows; row += 1) {
+        for (let column = 0; column < WORLD.columns; column += 1) {
+          const cell = document.createElement("button");
+          cell.type = "button";
+          cell.className = "level-cell";
+          cell.dataset.row = String(row);
+          cell.dataset.column = String(column);
+          cell.dataset.symbol = this.customGrid[row][column] || " ";
+          cell.setAttribute("role", "gridcell");
+          cell.setAttribute("aria-label", `Fila ${row + 1}, columna ${column + 1}`);
+          const paint = () => this.paintEditorCell(cell, row, column);
+          cell.addEventListener("pointerdown", paint);
+          cell.addEventListener("pointerenter", (event) => { if (event.buttons === 1) paint(); });
+          levelGridElement.append(cell);
+        }
+      }
+    }
+
+    paintEditorCell(cell, row, column) {
+      const rows = this.customGrid.map((text) => [...text]);
+      rows[row][column] = this.editorTool;
+      this.customGrid = rows.map((cells) => cells.join(""));
+      cell.dataset.symbol = this.editorTool;
+      writeStoredJson("mvl-beta-06-level", { grid: this.customGrid });
+    }
+
+    initializeTouchControls() {
+      let padPointer = null;
+      let jumpDirectionHeld = false;
+      const clearPad = () => {
+        this.input.setVirtual("p1Left", false);
+        this.input.setVirtual("p1Right", false);
+        this.input.setVirtual("p1Crouch", false);
+        this.input.releaseVirtual("p1Jump");
+        jumpDirectionHeld = false;
+        if (touchStick) touchStick.style.transform = "translate(-50%, -50%)";
+      };
+      const updatePad = (event) => {
+        if (this.settings.touchOpacity === 0 || !touchPad) return;
+        const bounds = touchPad.getBoundingClientRect();
+        const dx = event.clientX - (bounds.left + bounds.width / 2);
+        const dy = event.clientY - (bounds.top + bounds.height / 2);
+        const threshold = bounds.width * 0.13;
+        const max = bounds.width * 0.24;
+        this.input.setVirtual("p1Left", dx < -threshold);
+        this.input.setVirtual("p1Right", dx > threshold);
+        this.input.setVirtual("p1Crouch", dy > threshold);
+        const wantsJump = dy < -threshold;
+        if (wantsJump && !jumpDirectionHeld) this.input.pressVirtual("p1Jump");
+        if (!wantsJump && jumpDirectionHeld) this.input.releaseVirtual("p1Jump");
+        jumpDirectionHeld = wantsJump;
+        if (touchStick) touchStick.style.transform = `translate(calc(-50% + ${clamp(dx, -max, max)}px), calc(-50% + ${clamp(dy, -max, max)}px))`;
+      };
+      touchPad?.addEventListener("pointerdown", (event) => {
+        if (this.settings.touchOpacity === 0) return;
+        padPointer = event.pointerId;
+        touchPad.setPointerCapture?.(event.pointerId);
+        updatePad(event);
+      });
+      touchPad?.addEventListener("pointermove", (event) => { if (event.pointerId === padPointer) updatePad(event); });
+      const releasePad = (event) => { if (event.pointerId === padPointer) { padPointer = null; clearPad(); } };
+      touchPad?.addEventListener("pointerup", releasePad);
+      touchPad?.addEventListener("pointercancel", releasePad);
+
+      const bindTouchButton = (button, action) => {
+        button?.addEventListener("pointerdown", (event) => {
+          event.stopPropagation();
+          if (this.settings.touchOpacity === 0) return;
+          button.setPointerCapture?.(event.pointerId);
+          this.input.pressVirtual(action);
+        });
+        const release = (event) => { event.stopPropagation(); this.input.releaseVirtual(action); };
+        button?.addEventListener("pointerup", release);
+        button?.addEventListener("pointercancel", release);
+      };
+      bindTouchButton(touchJump, "p1Jump");
+      bindTouchButton(touchFire, "p1Fire");
+
+      canvas.addEventListener("pointerdown", (event) => {
+        canvas.focus({ preventScroll: true });
+        if (this.state !== "playing") return;
+        const bounds = canvas.getBoundingClientRect();
+        if (event.clientX >= bounds.left + bounds.width / 2) this.input.pressVirtual("p1Fire");
+      });
+      canvas.addEventListener("pointerup", () => this.input.releaseVirtual("p1Fire"));
+    }
+
     update(dt) {
+      if (this.state === "paused") return;
       for (const cloud of this.clouds) cloud.update(dt);
       this.updateParticles(dt);
+      this.audio.updateMusic(dt, this.state === "playing" || this.state === "menu");
 
       if (this.state !== "playing") return;
       this.elapsed += dt;
 
-      if (this.input.consumePress("spawnAI")) this.spawnAI();
-
       this.player.update(
         dt,
         {
-          horizontal: Number(this.input.isHeld("right")) - Number(this.input.isHeld("left")),
-          crouch: this.input.isHeld("crouch"),
-          jumpPressed: this.input.consumePress("jump"),
+          horizontal: Number(this.input.isHeld("p1Right")) - Number(this.input.isHeld("p1Left")),
+          crouch: this.input.isHeld("p1Crouch"),
+          jumpPressed: this.input.consumePress("p1Jump"),
         },
         this.world,
         {
@@ -952,10 +1350,16 @@
         },
       );
 
-      if (this.input.consumePress("fire")) this.tryFire(this.player);
+      if (this.input.consumePress("p1Fire")) this.tryFire(this.player);
 
       if (this.aiActor?.alive) {
-        const aiControls = this.ai.decide(dt, this);
+        const aiControls = this.mode === "ai"
+          ? this.ai.decide(dt, this)
+          : {
+              horizontal: Number(this.input.isHeld("p2Right")) - Number(this.input.isHeld("p2Left")),
+              crouch: this.input.isHeld("p2Crouch"),
+              jumpPressed: this.input.consumePress("p2Jump"),
+            };
         this.aiActor.update(
           dt,
           aiControls,
@@ -965,12 +1369,15 @@
             onJump: () => this.audio.jump(),
           },
         );
-        if (this.ai.firePressed) this.tryFire(this.aiActor);
+        if (this.mode === "ai" ? this.ai.firePressed : this.input.consumePress("p2Fire")) {
+          this.tryFire(this.aiActor);
+        }
       } else if (this.aiActor) {
         this.aiActor.updateTimers(dt);
       }
 
-      this.resolveStomps();
+      const stomped = this.resolveStomps();
+      if (!stomped) this.resolveActorCollision();
 
       for (const fireball of this.fireballs) fireball.update(dt, this);
       this.resolveFireballCollisions();
@@ -987,7 +1394,7 @@
         this.aiActor.health === 0 &&
         this.aiActor.invulnerability === 0
       ) {
-        this.endMatch("victory", "RIVAL IA SIN CORAZONES");
+        this.endMatch("victory", this.mode === "ai" ? "RIVAL IA SIN CORAZONES" : "JUGADOR 2 SIN CORAZONES");
       }
     }
 
@@ -1011,19 +1418,19 @@
       actor.health = 0;
       actor.invulnerability = 0;
       if (actor.id === "player") this.endMatch("defeat", "CAÍDA AL VACÍO · VIDA 0");
-      else this.endMatch("victory", "LA IA CAYÓ AL VACÍO");
+      else this.endMatch("victory", this.mode === "ai" ? "LA IA CAYÓ AL VACÍO" : "JUGADOR 2 CAYÓ AL VACÍO");
     }
 
     onActorDamaged(actor, amount, kind) {
-      const who = actor.id === "player" ? "Jugador" : "Rival IA";
+      const who = actor.id === "player" ? "Jugador 1" : this.mode === "ai" ? "Rival IA" : "Jugador 2";
       gameStatus.textContent = `${who} perdió ${amount} punto${amount === 1 ? "" : "s"}. Vida: ${actor.health}.`;
       if (kind === "projectile") this.audio.actorHit();
     }
 
     resolveStomps() {
-      if (!this.aiActor || !this.player.alive || !this.aiActor.alive) return;
-      if (this.tryStomp(this.player, this.aiActor)) return;
-      this.tryStomp(this.aiActor, this.player);
+      if (!this.aiActor || !this.player.alive || !this.aiActor.alive) return false;
+      if (this.tryStomp(this.player, this.aiActor)) return true;
+      return this.tryStomp(this.aiActor, this.player);
     }
 
     tryStomp(attacker, victim) {
@@ -1051,12 +1458,39 @@
 
       attacker.y = victim.y - attacker.height;
       attacker.vy = ACTOR_TUNING.stompBounceVelocity;
+      attacker.stompPoseTimer = 0.25;
       attacker.grounded = false;
       this.emitStomp(attacker.centerX, victim.y, damaged);
       this.audio.stomp();
       if (damaged) this.onActorDamaged(victim, ACTOR_TUNING.stompDamage, "stomp");
       else if (protectedByCrouch) {
         gameStatus.textContent = "Pisotón bloqueado por el agachado.";
+      }
+      return true;
+    }
+
+    resolveActorCollision() {
+      const first = this.player;
+      const second = this.aiActor;
+      if (!first?.alive || !second?.alive || !rectanglesOverlap(first, second)) return false;
+      const overlapX = Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x);
+      const overlapY = Math.min(first.bottom, second.bottom) - Math.max(first.y, second.y);
+      if (overlapX <= 0 || overlapY <= 0) return false;
+
+      if (overlapX <= overlapY) {
+        const direction = first.centerX <= second.centerX ? -1 : 1;
+        const separation = overlapX / 2 + 0.02;
+        first.x = clamp(first.x + direction * separation, 0, WORLD.width - first.width);
+        second.x = clamp(second.x - direction * separation, 0, WORLD.width - second.width);
+        const combined = (first.vx + second.vx) * 0.2;
+        first.vx = combined + direction * 35;
+        second.vx = combined - direction * 35;
+      } else {
+        const upper = first.centerY < second.centerY ? first : second;
+        const lower = upper === first ? second : first;
+        upper.y -= overlapY + 0.02;
+        if (upper.vy > lower.vy) upper.vy = Math.min(0, lower.vy);
+        upper.grounded = true;
       }
       return true;
     }
@@ -1075,10 +1509,30 @@
 
           first.active = false;
           second.active = false;
-          this.emitFireballClash((first.x + second.x) / 2, (first.y + second.y) / 2);
+          const clashX = (first.x + second.x) / 2;
+          const clashY = (first.y + second.y) / 2;
+          this.emitFireballClash(clashX, clashY);
+          this.applyClashImpulse(clashX, clashY);
           this.audio.fireballClash();
           break;
         }
+      }
+    }
+
+    applyClashImpulse(x, y) {
+      const radius = 190;
+      for (const actor of [this.player, this.aiActor].filter(Boolean)) {
+        if (!actor.alive) continue;
+        const dx = actor.centerX - x;
+        const dy = actor.centerY - y;
+        const distance = Math.hypot(dx, dy);
+        if (distance >= radius) continue;
+        const safeDistance = Math.max(distance, 12);
+        const falloff = 1 - distance / radius;
+        const strength = 470 * falloff;
+        actor.vx += (dx / safeDistance) * strength;
+        actor.vy += (dy / safeDistance) * strength - 170 * falloff;
+        actor.grounded = false;
       }
     }
 
@@ -1146,18 +1600,19 @@
 
     emitFireTrail(fireball) {
       const direction = Math.sign(fireball.vx) || 1;
+      const opacityScale = fireball.opacity;
       this.addParticle({
         x: fireball.x - direction * randomRange(8, 13),
         y: fireball.y + randomRange(-5, 5),
         vx: -fireball.vx * randomRange(0.035, 0.08) + randomRange(-18, 18),
         vy: randomRange(-24, 24),
         color: Math.random() < 0.45 ? "#ffc83d" : "#ff5a24",
-        size: randomRange(3, 6),
-        lifetime: randomRange(0.13, 0.24),
+        size: randomRange(3, 6) * opacityScale,
+        lifetime: randomRange(0.13, 0.24) * (0.55 + opacityScale * 0.45),
       });
     }
 
-    emitBounce(x, y) {
+    emitBounce(x, y, alpha = 1) {
       for (let i = 0; i < 3; i += 1) {
         this.addParticle({
           x,
@@ -1165,9 +1620,24 @@
           vx: randomRange(-55, 55),
           vy: randomRange(-90, -25),
           color: "#ffc83d",
-          size: 3,
-          lifetime: 0.18,
+          size: 3 * alpha,
+          lifetime: 0.1 + 0.08 * alpha,
           gravity: 380,
+        });
+      }
+    }
+
+    emitFireballDissolve(x, y) {
+      for (let i = 0; i < 12; i += 1) {
+        const angle = (Math.PI * 2 * i) / 12;
+        this.addParticle({
+          x, y,
+          vx: Math.cos(angle) * randomRange(45, 150),
+          vy: Math.sin(angle) * randomRange(45, 150),
+          color: i % 2 ? "#ff5a24" : "#ffc83d",
+          size: randomRange(2, 5),
+          lifetime: randomRange(0.14, 0.3),
+          gravity: 120,
         });
       }
     }
@@ -1270,6 +1740,7 @@
       this.resultReason = reason;
       this.fireballs.length = 0;
       restartButton.hidden = false;
+      if (menuButton) menuButton.hidden = false;
       gameStatus.textContent = `${state === "victory" ? "Victoria" : "Game over"}. ${reason}.`;
     }
 
@@ -1296,6 +1767,9 @@
           : null;
       return {
         state: this.state,
+        mode: this.mode,
+        renderFps: this.renderFps,
+        touchOpacity: this.settings.touchOpacity,
         wind: Number(this.wind.toFixed(2)),
         cloudCount: this.clouds.length,
         cloudSpeeds: this.clouds.map((cloud) => Number(cloud.speed.toFixed(2))),
@@ -1306,6 +1780,7 @@
         fireballsByOwner: {
           player: this.fireballs.filter((fireball) => fireball.ownerId === "player").length,
           ai: this.fireballs.filter((fireball) => fireball.ownerId === "ai").length,
+          player2: this.fireballs.filter((fireball) => fireball.ownerId === "player2").length,
         },
         fireballs: this.fireballs.map((fireball) => ({
           ownerId: fireball.ownerId,
@@ -1314,6 +1789,7 @@
           vx: Number(fireball.vx.toFixed(2)),
           vy: Number(fireball.vy.toFixed(2)),
           bounces: fireball.bounces,
+          opacity: Number(fireball.opacity.toFixed(2)),
         })),
         blocks: this.world.blocks.map((block) => ({
           id: block.id,
@@ -1335,7 +1811,7 @@
       this.drawActor(this.player);
       if (this.aiActor) this.drawActor(this.aiActor);
       this.drawHud();
-      if (this.state !== "playing") this.drawResult();
+      if (this.state === "victory" || this.state === "defeat") this.drawResult();
     }
 
     drawSky() {
@@ -1449,14 +1925,18 @@
       const bob = walking ? (walkFrame % 2) : Math.round(Math.sin(actor.animationTime * 3) * 0.5);
       const airborne = !actor.grounded;
       const firing = actor.firePoseTimer > 0;
+      const hurt = actor.hurtPoseTimer > 0;
+      const stomped = actor.stompPoseTimer > 0;
+      const skidding = actor.skidTimer > 0 && !airborne;
+      if (hurt) ctx.rotate(-0.08);
 
       // Piernas y calzado.
       ctx.fillStyle = colors.pants;
       if (airborne) {
         ctx.fillRect(-13, 54 + bob, 12, 14);
-        ctx.fillRect(2, 52 + bob, 11, 11);
+        ctx.fillRect(2, actor.vy < 0 ? 50 + bob : 56 + bob, 11, 11);
       } else {
-        ctx.fillRect(-12, 52 + bob, 10, 20 + legOffsets[0]);
+        ctx.fillRect(-12, 52 + bob, 10, 20 + legOffsets[0] - (skidding ? 4 : 0));
         ctx.fillRect(2, 52 + bob, 10, 20 + legOffsets[1]);
       }
       ctx.fillStyle = colors.shoes;
@@ -1478,13 +1958,16 @@
 
       // Brazos con poses de caminar, salto y disparo.
       ctx.fillStyle = colors.skin;
-      if (firing) {
+      if (hurt) {
+        ctx.fillRect(12, 23 + bob, 8, 21);
+        ctx.fillRect(-20, 24 + bob, 8, 20);
+      } else if (firing) {
         ctx.fillRect(12, 31 + bob, 20, 8);
         ctx.fillStyle = colors.skinLight;
         ctx.fillRect(29, 29 + bob, 7, 11);
         ctx.fillStyle = colors.skin;
         ctx.fillRect(-20, 31 + bob, 7, 20);
-      } else if (airborne) {
+      } else if (airborne || stomped) {
         ctx.fillRect(11, 24 + bob, 8, 19);
         ctx.fillRect(-19, 25 + bob, 8, 18);
         ctx.fillStyle = colors.skinLight;
@@ -1510,6 +1993,7 @@
       ctx.fillRect(12, 23 + bob, 5, 3);
       ctx.fillStyle = colors.skinLight;
       ctx.fillRect(-7, 25 + bob, 12, 4);
+      this.drawAccessory(ctx, colors, bob, false);
       ctx.restore();
     }
 
@@ -1536,10 +2020,32 @@
       ctx.fillRect(-3, 0, 5, 3);
       ctx.fillStyle = "#172238";
       ctx.fillRect(8, 9, 4, 4);
+      this.drawAccessory(ctx, colors, 0, true);
+    }
+
+    drawAccessory(context, colors, bob = 0, crouching = false) {
+      const accessory = colors.accessory || "none";
+      const headY = crouching ? 3 : 7 + bob;
+      if (accessory === "band") {
+        context.fillStyle = colors.accent;
+        context.fillRect(-14, headY + 2, 27, 5);
+        context.fillRect(-18, headY + 5, 6, 4);
+      } else if (accessory === "scarf") {
+        context.fillStyle = colors.accent;
+        const scarfY = crouching ? 18 : 27 + bob;
+        context.fillRect(-13, scarfY, 27, 5);
+        context.fillRect(-17, scarfY + 4, 8, 12);
+      } else if (accessory === "visor") {
+        context.fillStyle = "#173852";
+        context.fillRect(2, headY + 4, 15, 7);
+        context.fillStyle = colors.accent;
+        context.fillRect(5, headY + 5, 9, 3);
+      }
     }
 
     drawFireball(fireball) {
       ctx.save();
+      ctx.globalAlpha = fireball.opacity;
       ctx.translate(Math.round(fireball.x), Math.round(fireball.y));
       ctx.rotate(fireball.spin);
       ctx.fillStyle = "#8e251f";
@@ -1645,21 +2151,10 @@
         ctx.font = '700 17px "Courier New", monospace';
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(
-          "A/D MOVER · S AGACHAR · E FUEGO · ESPACIO SALTAR · ENTER IA",
-          WORLD.width / 2,
-          39,
-        );
-      } else if (!this.aiActor && this.state === "playing") {
-        const pulse = 0.7 + Math.sin(this.elapsed * 4) * 0.25;
-        ctx.globalAlpha = pulse;
-        ctx.fillStyle = "rgba(7, 17, 31, 0.72)";
-        ctx.fillRect(510, 20, 260, 36);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = '700 16px "Courier New", monospace';
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("ENTER · ACTIVAR RIVAL IA", 640, 38);
+        const help = this.mode === "local"
+          ? "P1 A/D · S · ESPACIO · E  |  P2 ←/→ · ↓ · ↑ · ENTER"
+          : "A/D MOVER · S AGACHAR · ESPACIO SALTAR · E DISPARAR";
+        ctx.fillText(help, WORLD.width / 2, 39);
       }
       ctx.restore();
     }
@@ -1681,6 +2176,7 @@
   const game = new Game();
   let accumulator = 0;
   let previousTime = performance.now();
+  let previousRenderTime = -Infinity;
 
   const frame = (time) => {
     const delta = Math.min((time - previousTime) / 1000, WORLD.maxFrameDelta);
@@ -1692,7 +2188,11 @@
       accumulator -= WORLD.fixedStep;
     }
 
-    game.render();
+    const renderInterval = 1000 / game.renderFps;
+    if (time - previousRenderTime >= renderInterval - 0.5) {
+      game.render();
+      previousRenderTime = time;
+    }
     requestAnimationFrame(frame);
   };
 
@@ -1703,12 +2203,13 @@
   });
 
   restartButton.addEventListener("click", () => game.reset());
-  canvas.addEventListener("pointerdown", () => canvas.focus({ preventScroll: true }));
 
   window.__MVL_DEBUG__ = Object.freeze({
     snapshot: () => game.snapshot(),
     reset: () => game.reset(),
     spawnAI: () => game.spawnAI(),
+    startLocal: () => { game.startMatch("local"); return game.snapshot(); },
+    startAI: () => { game.startMatch("ai"); return game.snapshot(); },
     damagePlayer: (amount = 1) => game.player.takeDamage(amount, 1, "projectile"),
     visualHeartHalf,
     groundedShoeBottoms: (legOffsets = [0, 0]) =>
@@ -1768,6 +2269,12 @@
     },
     forceFireballClash: () => {
       game.spawnAI();
+      game.player.x = 590;
+      game.player.y = 330;
+      game.aiActor.x = 660;
+      game.aiActor.y = 330;
+      game.player.vx = 0;
+      game.aiActor.vx = 0;
       const first = new Fireball(game.player);
       const second = new Fireball(game.aiActor);
       first.x = 640;
@@ -1778,6 +2285,40 @@
       game.resolveFireballCollisions();
       game.fireballs = game.fireballs.filter((fireball) => fireball.active);
       return game.snapshot();
+    },
+    forceSideBounce: () => {
+      const block = game.world.blockAt(4, 11);
+      const fireball = new Fireball(game.player);
+      fireball.x = block.x - fireball.radius - 1;
+      fireball.y = block.y + block.height / 2;
+      fireball.vx = 650;
+      fireball.vy = 40;
+      game.fireballs = [fireball];
+      fireball.moveHorizontal(0.01, game);
+      return game.snapshot();
+    },
+    exhaustBounceBudget: () => {
+      const fireball = new Fireball(game.player);
+      fireball.x = 640;
+      fireball.y = 300;
+      game.fireballs = [fireball];
+      for (let count = 0; count < FIREBALL_TUNING.maxBounces; count += 1) {
+        if (!fireball.registerBounce(game)) break;
+        fireball.vx *= FIREBALL_TUNING.bounceRetention;
+      }
+      game.fireballs = game.fireballs.filter((candidate) => candidate.active);
+      return game.snapshot();
+    },
+    resolveActorOverlap: () => {
+      game.startMatch("local");
+      game.player.x = 600;
+      game.aiActor.x = 615;
+      game.player.y = game.aiActor.y;
+      game.resolveActorCollision();
+      return {
+        overlap: rectanglesOverlap(game.player, game.aiActor),
+        snapshot: game.snapshot(),
+      };
     },
     forceProjectileHitAI: () => {
       game.spawnAI();

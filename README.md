@@ -1,69 +1,85 @@
-# MVL — Beta 0.5
+# MVL — Beta 0.6
 
-Beta jugable y liviana de una arena de plataformas 2D destructible. La Beta 0.5 cierra la Etapa 1: valida el movimiento, el combate contra una IA y las reglas centrales de vidas y caída al vacío.
+Segunda etapa jugable de MVL: una arena web 2D competitiva, destructible y sin scrolling, construida con HTML, CSS, JavaScript y Canvas 2D. El modo online figura como **Etapa 3 · Próximamente** y todavía no establece conexiones de red.
 
-## Controles
+## Modos y menús
 
-- `A`: mover a la izquierda.
-- `D`: mover a la derecha.
-- `S`: agacharse; la hitbox baja de dos celdas a una. Puede activarse antes o durante el salto.
-- `E`: disparar hacia donde mira el personaje.
-- `Espacio`: saltar.
-- `Enter`: incorporar un rival controlado por IA.
+- `VS IA`: rival con defensa ante proyectiles, detección de huecos, persecución, saltos ofensivos y búsqueda de superficies.
+- `PvP local`: dos personajes en el mismo teclado y con colisión física entre sí.
+- `PvP online`: visible como **Próximamente**, sin implementación prematura.
+- Apartados de personaje, editor de niveles y ajustes.
+- Abrir ajustes durante una partida pausa por completo la simulación.
 
-## Reglas implementadas
+## Controles de teclado
 
-- Cada personaje comienza con 10 puntos de vida distribuidos en 5 corazones.
-- Cada corazón representa 2 puntos y puede mostrarse completo o por la mitad.
-- Los corazones de ambos lados se consumen de forma perfectamente espejada.
-- Un impacto de proyectil elimina exactamente 1 punto de vida.
-- Saltar sobre la cabeza del rival elimina 3 puntos, lo fuerza a agacharse durante su invulnerabilidad y produce un rebote para quien cae encima.
-- Un personaje que ya está agachado bloquea por completo el daño del pisotón y no recibe invulnerabilidad por ese contacto.
-- Después de recibir un proyectil o un pisotón válido, el personaje parpadea y es invulnerable brevemente.
-- Si se destruye el bloque que sostiene a un personaje, pierde 1 punto y recibe un impulso radial suave desde el centro del bloque.
-- Caer al vacío coloca inmediatamente la vida en 0.
-- Cada personaje puede mantener como máximo dos bolas de fuego activas.
-- Las bolas de fuego enfrentadas se anulan al colisionar y generan partículas.
-- Los ladrillos flotantes tienen 3 HP y se rompen al golpearlos correctamente desde abajo.
-- Un salto agachado puede golpear un ladrillo desde abajo, pero no lo destruye.
-- Los ladrillos del suelo tienen 6 HP y forman dos filas independientes.
-- Los proyectiles tienen gravedad, trayectoria parabólica, rebote y una estela de partículas.
-- El dibujo de pie y agachado toca exactamente la base de su hitbox, sin separación visual de la superficie.
+Preset clásico:
 
-## Rival IA
+- Jugador 1: `A/D` mover, `S` agacharse, `Espacio` saltar y `E` disparar.
+- Jugador 2: `←/→` mover, `↓` agacharse, `↑` saltar y `Enter` disparar.
 
-La IA mantiene una distancia de combate más estable, anticipa la trayectoria parabólica de proyectiles, se agacha ante pisotones previsibles, salta ante disparos bajos u obstáculos y corrige su caída hacia superficies cercanas. Sigue siendo deliberadamente vencible para esta primera beta.
+El preset alternativo intercambia ambos grupos. El proyectil siempre sale hacia donde mira el personaje; no existe apuntado direccional.
 
-## Sonido
+## Controles móviles
 
-Los efectos se sintetizan en tiempo real mediante Web Audio y no necesitan archivos externos. Hay sonidos diferenciados para salto, disparo, impactos, daño a personajes, choque entre proyectiles y pisotón. La destrucción del ladrillo flotante y la del ladrillo de suelo usan sonidos propios claramente distintos.
+- Gamepad virtual izquierdo: izquierda/derecha, salto al empujar hacia arriba y agachado hacia abajo.
+- Tap o click en la mitad derecha de la arena: disparar.
+- Botón `A`: salto. Botón `B`: disparo.
+- La opacidad común del gamepad y de `A/B` puede ser `10%`, `25%`, `50%` u `Ocultos`.
+- En `Ocultos`, esos controles dejan de existir visual y funcionalmente; el tap/click en la mitad derecha sigue disponible.
+- Botones separados de pantalla completa y ajustes, soporte horizontal y zonas seguras del teléfono.
 
-## Cielo abierto
+## Física y combate
 
-No existe una colisión ni un descarte de proyectiles en el límite superior del escenario. La gravedad continúa actuando aunque una entidad abandone temporalmente la zona visible por arriba.
+- Simulación determinista a 120 pasos por segundo, separada del render configurable a 60/120 FPS.
+- Cada personaje tiene 10 puntos de vida representados por 5 corazones simétricos.
+- Proyectil: 1 punto de daño; pisotón válido: 3 puntos; caída al vacío: vida 0 inmediata.
+- Agacharse reduce la hitbox de 80 a 40 píxeles, incluso en el aire. Un personaje agachado bloquea el daño del pisotón.
+- Los personajes son cuerpos sólidos y no pueden atravesarse.
+- Dos proyectiles enfrentados se anulan, generan partículas y repelen radialmente a los personajes cercanos sin causar daño.
+- Cada personaje mantiene como máximo dos bolas de fuego activas.
 
-## Apariencia extensible
+## Rebotes y destrucción
 
-El personaje se dibuja por capas independientes de piel, cabello y ropa. Las paletas están separadas de las físicas para que un futuro apartado de personalización pueda reemplazarlas sin modificar hitboxes ni movimiento.
+- Las bolas rebotan en partes superiores, inferiores y laterales de los bloques.
+- Cada contacto consume uno de 8 rebotes máximos; la velocidad, la bola y su estela se debilitan progresivamente.
+- El octavo rebote extingue el proyectil con partículas.
+- Ladrillo flotante: 3 HP, destruible también desde abajo por un salto de pie.
+- Ladrillo de suelo: 6 HP y dos filas independientes.
+- Cada tipo tiene dibujo, sonido de impacto y sonido de destrucción propios.
+- Destruir el apoyo bajo un personaje le quita 1 punto y lo impulsa radialmente.
 
-## Cielo y viento
+## Personaje y animación
 
-Cada partida genera nueve nubes con posiciones, escalas y velocidades distintas. Todas comparten la dirección y la intensidad base de un viento sorteado al iniciar la partida.
+El dibujo original se compone por capas visuales independientes de piel, cabello, prenda superior, prenda inferior, calzado, acento y accesorios. La personalización se guarda localmente y no modifica hitboxes ni físicas.
+
+Estados visuales: quieto, correr, detenerse/derrapar, saltar, caer, agacharse, disparar, recibir daño y pisotón.
+
+## Editor de niveles
+
+El editor trabaja sobre la misma cuadrícula lógica de 32 × 18. Cada celda guarda únicamente un símbolo de tipo:
+
+- `F`: ladrillo flotante.
+- `G`: ladrillo de suelo.
+- espacio: celda vacía.
+
+Dimensiones, HP y comportamiento siguen definidos exclusivamente por el registro del motor. El nivel editado se guarda en el navegador y puede probarse directamente contra la IA.
+
+## Ajustes persistentes
+
+Idioma español/inglés, preset de controles, sonido, música original sintetizada, 60/120 FPS y opacidad táctil. La configuración, apariencia y nivel personalizado se guardan con `localStorage`.
 
 ## Ejecutar localmente
 
-No requiere instalación ni dependencias. Se puede abrir `index.html` directamente o servir la carpeta con cualquier servidor estático:
+No requiere dependencias:
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Luego abrir `http://localhost:8000`.
+Abrir `http://localhost:8000`.
 
-## Estructura
+## Archivos
 
-- `index.html`: Canvas y elementos mínimos de interfaz.
-- `style.css`: presentación 16:9 y escalado responsivo.
-- `game.js`: entrada, física, IA, entidades, colisiones y renderizado.
-
-El nivel usa una cuadrícula de símbolos. Cada celda solo selecciona un tipo registrado por el motor; dimensiones, HP y reglas siguen perteneciendo al motor.
+- `index.html`: Canvas, menús, personalización, editor y controles táctiles.
+- `style.css`: presentación 16:9, zonas seguras y diseño responsivo.
+- `game.js`: entrada, física, IA, audio, persistencia, entidades, colisiones y render.
