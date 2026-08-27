@@ -1,4 +1,4 @@
-# MVL — Beta 0.8
+# MVL — Beta 0.9
 
 Segunda etapa jugable de MVL: una arena web 2D competitiva, destructible y sin scrolling, construida con HTML, CSS, JavaScript y Canvas 2D. El modo online figura como **Etapa 3 · Próximamente** y todavía no establece conexiones de red.
 
@@ -14,17 +14,17 @@ Segunda etapa jugable de MVL: una arena web 2D competitiva, destructible y sin s
 
 Preset clásico:
 
-- Jugador 1: `A/D` mover, `S` agacharse, `Espacio` saltar y `E` disparar.
-- Jugador 2: `←/→` mover, `↓` agacharse, `↑` saltar y `Enter` disparar.
+- Jugador 1: `WASD` direcciones, `F` ataque corto, `E` ataque largo, `Q` cobertura y `Shift izquierdo` correr.
+- Jugador 2: flechas direccionales, `Num 1` ataque corto, `Num 2` ataque largo, `Num 3` cobertura y `Num 0` correr.
 
-El preset alternativo intercambia ambos grupos. El proyectil siempre sale hacia donde mira el personaje; no existe apuntado direccional.
+El preset alternativo intercambia ambos grupos. Arriba salta y abajo agacha. El proyectil siempre sale hacia donde mira el personaje; no existe apuntado direccional. Ataque corto y cobertura ya tienen entrada y animación, pero sus reglas de daño y defensa quedan pendientes de definición.
 
 ## Controles móviles
 
 - Gamepad virtual izquierdo: izquierda/derecha, salto al empujar hacia arriba y agachado hacia abajo.
 - Tap o click en la mitad derecha de la arena: disparar.
-- Botón `A`: salto. Botón `B`: disparo.
-- La opacidad común del gamepad y de `A/B` puede ser `10%`, `25%`, `50%` u `Ocultos`.
+- Botones de acción: `A` ataque corto, `B` ataque largo, `X` cobertura y `Y` correr.
+- La opacidad común del gamepad y de los cuatro botones puede ser `10%`, `25%`, `50%` u `Ocultos`.
 - En `Ocultos`, esos controles dejan de existir visual y funcionalmente; el tap/click en la mitad derecha sigue disponible.
 - Botones separados de pantalla completa y ajustes, soporte horizontal y zonas seguras del teléfono.
 
@@ -33,7 +33,8 @@ El preset alternativo intercambia ambos grupos. El proyectil siempre sale hacia 
 - Simulación determinista a 120 pasos por segundo, separada del render configurable a 60/120 FPS.
 - Cada personaje tiene 10 puntos de vida representados por 5 corazones simétricos.
 - Proyectil: 1 punto de daño; pisotón válido: 3 puntos; caída al vacío: vida 0 inmediata.
-- Agacharse reduce la hitbox de 80 a 40 píxeles, incluso en el aire. Un personaje agachado bloquea el daño del pisotón.
+- Agacharse reduce la hitbox de 80 a 40 píxeles, incluso en el aire. Ahora permite avanzar lentamente a 82 px/s. Un personaje agachado bloquea el daño del pisotón.
+- El movimiento normal alcanza 225 px/s y el botón de correr lo eleva a 350 px/s.
 - Los personajes son cuerpos sólidos y no pueden atravesarse.
 - Dos proyectiles enfrentados se anulan, generan partículas y repelen radialmente a los personajes cercanos sin causar daño.
 - Cada personaje mantiene como máximo dos bolas de fuego activas.
@@ -50,9 +51,9 @@ El preset alternativo intercambia ambos grupos. El proyectil siempre sale hacia 
 
 ## Personaje y animación
 
-El personaje fue rediseñado desde cero con una estética propia de consola de 16 bits: anatomía articulada, silueta sin rasgos de fontanero, contornos oscuros, luces planas y movimiento continuo. La personalización se guarda localmente y no modifica hitboxes ni físicas.
+El personaje usa una base de luchador modular con estética de consola de 16 bits: postura de combate, extremidades cónicas con volumen, manos en puño, tres valores de luz, ropa con siluetas propias y transiciones continuas. El sistema está pensado para construir arquetipos reconocibles —ninja, karateka, soldado— sin copiar sprites concretos. La personalización se guarda localmente y no modifica hitboxes.
 
-Estados visuales: quieto, correr, detenerse/derrapar, saltar, caer, agacharse, disparar, recibir daño y pisotón.
+Estados visuales: quieto, moverse, correr, detenerse/derrapar, saltar, caer, agacharse, ataque corto, ataque largo, cobertura, recibir daño y pisotón.
 
 Opciones combinables:
 
@@ -64,7 +65,7 @@ Opciones combinables:
 - Accesorios booleanos y simultáneos: gafas oscuras, vincha, muñequeras, barbijo, capucha, cinturón y chaleco; cada uno conserva su propio color.
 - Sin pantalones: ambos modelos usan ropa interior negra; el bóxer masculino conserva una cintura blanca para distinguir su silueta. Sin camiseta, la mujer mantiene la parte superior negra del conjunto.
 
-La vista previa del apartado `Personaje` permanece en Idle por defecto. El modo `Demostración` recorre los nueve estados durante tres segundos cada uno para revisar cómo cada capa acompaña la animación.
+La vista previa del apartado `Personaje` permanece en Idle por defecto. El modo `Demostración` recorre los doce estados durante tres segundos cada uno para revisar cómo cada capa acompaña la animación.
 
 ## Editor de niveles
 

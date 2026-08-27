@@ -6,5 +6,5 @@
     "build": "bash scripts/build.sh",
     "validate": "node scripts/validate-artifact.mjs"
   },
-  "displayName": "MVL \u2014 Beta 0.8"
+  "displayName": "MVL \u2014 Beta 0.9"
 }

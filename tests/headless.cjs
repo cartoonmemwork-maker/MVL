@@ -159,6 +159,9 @@ assert.deepEqual(appearanceCatalog.footwearStyle, ["sneakers", "shoes", "barefoo
 assert.deepEqual(appearanceCatalog.accessories, [
   "darkGlasses", "headband", "wristbands", "faceMask", "hood", "belt", "vest",
 ]);
+assert.deepEqual(window.__MVL_DEBUG__.inputActions(), [
+  "left", "right", "up", "down", "melee", "ranged", "guard", "run",
+]);
 const customizedAppearance = window.__MVL_DEBUG__.normalizeAppearance({
   sex: "female", hairStyle: "long", topStyle: "noTop", bottomStyle: "noPants",
   footwearStyle: "barefoot", darkGlasses: true, darkGlassesColor: "#123456",
@@ -176,16 +179,35 @@ assert.equal(removableHeadband.headband, false);
 assert.equal("accessory" in removableHeadband, false);
 assert.equal(window.__MVL_DEBUG__.previewStateFor("idle", 99), "idle");
 assert.equal(window.__MVL_DEBUG__.previewStateFor("demo", 2.99), "idle");
-assert.equal(window.__MVL_DEBUG__.previewStateFor("demo", 3), "run");
-assert.equal(window.__MVL_DEBUG__.previewStateFor("demo", 6), "skid");
+assert.equal(window.__MVL_DEBUG__.previewStateFor("demo", 3), "walk");
+assert.equal(window.__MVL_DEBUG__.previewStateFor("demo", 6), "run");
+assert.equal(window.__MVL_DEBUG__.previewStateFor("demo", 9), "skid");
+assert.equal(window.__MVL_DEBUG__.renderAnimationStates(), 12);
 assert.equal(window.__MVL_DEBUG__.renderAppearanceMatrix(), 162);
 
 dispatch("keydown", "KeyD");
 step(6);
-assert.equal(window.__MVL_DEBUG__.snapshot().player.animationState, "run");
+assert.equal(window.__MVL_DEBUG__.snapshot().player.animationState, "walk");
 dispatch("keyup", "KeyD");
 window.__MVL_DEBUG__.reset();
-tap("Space");
+dispatch("keydown", "ShiftLeft");
+dispatch("keydown", "KeyD");
+step(12);
+assert.equal(window.__MVL_DEBUG__.snapshot().player.animationState, "run");
+assert.equal(window.__MVL_DEBUG__.snapshot().player.running, true);
+dispatch("keyup", "KeyD");
+dispatch("keyup", "ShiftLeft");
+window.__MVL_DEBUG__.reset();
+dispatch("keydown", "KeyQ");
+step(2);
+assert.equal(window.__MVL_DEBUG__.snapshot().player.animationState, "guard");
+assert.equal(window.__MVL_DEBUG__.snapshot().player.guarding, true);
+dispatch("keyup", "KeyQ");
+window.__MVL_DEBUG__.reset();
+tap("KeyF");
+assert.equal(window.__MVL_DEBUG__.snapshot().player.animationState, "melee");
+window.__MVL_DEBUG__.reset();
+tap("KeyW");
 assert.equal(window.__MVL_DEBUG__.snapshot().player.animationState, "jump");
 window.__MVL_DEBUG__.reset();
 
@@ -213,12 +235,19 @@ snapshot = window.__MVL_DEBUG__.snapshot();
 assert.equal(snapshot.player.crouching, true);
 assert.equal(snapshot.player.height, 40);
 assert.equal(snapshot.player.y + snapshot.player.height, standingBottom);
+const crouchStartX = snapshot.player.x;
+dispatch("keydown", "KeyD");
+step(30);
+snapshot = window.__MVL_DEBUG__.snapshot();
+assert(snapshot.player.x > crouchStartX);
+assert(Math.abs(snapshot.player.vx) <= 82.01);
+dispatch("keyup", "KeyD");
 dispatch("keyup", "KeyS");
 step(3);
 assert.equal(window.__MVL_DEBUG__.snapshot().player.height, 80);
 
 // Un salto normal rompe el ladrillo flotante golpeado desde abajo.
-tap("Space");
+tap("KeyW");
 step(32);
 snapshot = window.__MVL_DEBUG__.snapshot();
 assert.equal(
@@ -230,7 +259,7 @@ assert.equal(
 window.__MVL_DEBUG__.reset();
 dispatch("keydown", "KeyS");
 step(3);
-tap("Space");
+tap("KeyW");
 step(32);
 snapshot = window.__MVL_DEBUG__.snapshot();
 assert.equal(snapshot.player.height, 40);
@@ -246,7 +275,7 @@ assert.equal(window.__MVL_DEBUG__.snapshot().player.height, 80);
 // También puede agacharse después de despegar y volver a erguirse en el aire.
 window.__MVL_DEBUG__.reset();
 window.__MVL_DEBUG__.movePlayerToOpenSky();
-tap("Space");
+tap("KeyW");
 step(5);
 dispatch("keydown", "KeyS");
 step(3);

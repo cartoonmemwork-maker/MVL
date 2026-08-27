@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="MVL Beta 0.8: arena 2D destructible con personaje personalizable, rival IA, PvP local y controles móviles. Online próximamente." />
+    <meta name="description" content="MVL Beta 0.9: arena 2D destructible con luchadores modulares, animaciones renovadas, rival IA, PvP local y controles móviles. Online próximamente." />
     <meta name="theme-color" content="#75aadb" />
-    <title>MVL — Beta 0.8</title>
+    <title>MVL — Beta 0.9</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main id="gameShell" class="game-shell" aria-label="MVL Beta 0.8">
+    <main id="gameShell" class="game-shell" aria-label="MVL Beta 0.9">
       <canvas id="game" width="1280" height="720" tabindex="0" aria-label="Arena jugable de MVL">
         Tu navegador necesita compatibilidad con Canvas 2D para ejecutar MVL.
       </canvas>
@@ -21,7 +21,7 @@
 
       <section id="menuLayer" class="menu-layer" aria-label="Menú de MVL">
         <div class="menu-card" data-screen="main">
-          <p class="eyebrow">BETA 0.8</p>
+          <p class="eyebrow">BETA 0.9</p>
           <h1>MVL</h1>
           <p class="tagline" data-i18n="tagline">ARENA DE BLOQUES DESTRUCTIBLES</p>
           <div class="menu-stack">
@@ -133,11 +133,16 @@
       </section>
 
       <div id="touchControls" class="touch-controls" aria-label="Controles táctiles">
-        <div id="touchPad" class="touch-pad" aria-label="Gamepad: izquierda, derecha, salto arriba y agacharse abajo"><span class="pad-arrow up">▲</span><span class="pad-arrow left">◀</span><span class="pad-arrow right">▶</span><span class="pad-arrow down">▼</span><span id="touchStick" class="touch-stick"></span></div>
-        <div class="touch-actions"><button id="touchJump" class="touch-action" type="button" aria-label="Saltar">A<small data-i18n="jump">SALTO</small></button><button id="touchFire" class="touch-action fire" type="button" aria-label="Disparar">B<small data-i18n="fire">FUEGO</small></button></div>
+        <div id="touchPad" class="touch-pad" aria-label="Direcciones: izquierda, derecha, salto arriba y agacharse abajo"><span class="pad-arrow up">▲</span><span class="pad-arrow left">◀</span><span class="pad-arrow right">▶</span><span class="pad-arrow down">▼</span><span id="touchStick" class="touch-stick"></span></div>
+        <div class="touch-actions" aria-label="Acciones de combate">
+          <button id="touchGuard" class="touch-action guard" type="button" aria-label="Cobertura">X<small data-i18n="guard">CUBRIR</small></button>
+          <button id="touchRun" class="touch-action run" type="button" aria-label="Correr">Y<small data-i18n="runAction">CORRER</small></button>
+          <button id="touchMelee" class="touch-action melee" type="button" aria-label="Ataque corto">A<small data-i18n="melee">CORTO</small></button>
+          <button id="touchRanged" class="touch-action ranged" type="button" aria-label="Ataque largo">B<small data-i18n="ranged">LARGO</small></button>
+        </div>
       </div>
 
-      <p id="loadingMessage" class="loading-message">Cargando MVL Beta 0.8…</p>
+      <p id="loadingMessage" class="loading-message">Cargando MVL Beta 0.9…</p>
       <button id="restartButton" class="restart-button" type="button" hidden data-i18n="rematch">REVANCHA</button>
       <button id="menuButton" class="menu-return-button" type="button" hidden data-i18n="mainMenu">MENÚ</button>
       <p id="gameStatus" class="sr-only" aria-live="polite"></p>

@@ -17,8 +17,10 @@
   const levelGridElement = document.querySelector("#levelGrid");
   const touchPad = document.querySelector("#touchPad");
   const touchStick = document.querySelector("#touchStick");
-  const touchJump = document.querySelector("#touchJump");
-  const touchFire = document.querySelector("#touchFire");
+  const touchMelee = document.querySelector("#touchMelee");
+  const touchRanged = document.querySelector("#touchRanged");
+  const touchGuard = document.querySelector("#touchGuard");
+  const touchRun = document.querySelector("#touchRun");
 
   const WORLD = Object.freeze({
     width: 1280,
@@ -37,7 +39,9 @@
     maxHealth: 10,
     acceleration: 2300,
     deceleration: 2800,
-    maxSpeed: 350,
+    walkSpeed: 225,
+    crouchSpeed: 82,
+    runSpeed: 350,
     gravity: 1900,
     jumpVelocity: -930,
     maxFallSpeed: 1100,
@@ -127,14 +131,19 @@
     "darkGlasses", "headband", "wristbands", "faceMask", "hood", "belt", "vest",
   ]);
 
+  const INPUT_ACTIONS = Object.freeze([
+    "left", "right", "up", "down", "melee", "ranged", "guard", "run",
+  ]);
+
   const PREVIEW_STATES = Object.freeze([
-    "idle", "run", "skid", "jump", "fall", "crouch", "fire", "hurt", "stomp",
+    "idle", "walk", "run", "skid", "jump", "fall", "crouch", "melee", "fire",
+    "guard", "hurt", "stomp",
   ]);
 
   const PREVIEW_STATE_KEYS = Object.freeze({
-    idle: "animIdle", run: "animRun", skid: "animSkid", jump: "animJump",
-    fall: "animFall", crouch: "animCrouch", fire: "animFire", hurt: "animHurt",
-    stomp: "animStomp",
+    idle: "animIdle", walk: "animWalk", run: "animRun", skid: "animSkid",
+    jump: "animJump", fall: "animFall", crouch: "animCrouch", melee: "animMelee",
+    fire: "animFire", guard: "animGuard", hurt: "animHurt", stomp: "animStomp",
   });
 
   // El futuro editor solo elige un tipo por celda. HP y dimensiones son del motor.
@@ -172,12 +181,16 @@
 
   const CONTROL_PRESETS = Object.freeze({
     classic: Object.freeze({
-      KeyA: "p1Left", KeyD: "p1Right", KeyS: "p1Crouch", KeyE: "p1Fire", Space: "p1Jump",
-      ArrowLeft: "p2Left", ArrowRight: "p2Right", ArrowDown: "p2Crouch", Enter: "p2Fire", ArrowUp: "p2Jump",
+      KeyA: "p1Left", KeyD: "p1Right", KeyW: "p1Up", KeyS: "p1Down",
+      KeyF: "p1Melee", KeyE: "p1Ranged", KeyQ: "p1Guard", ShiftLeft: "p1Run",
+      ArrowLeft: "p2Left", ArrowRight: "p2Right", ArrowUp: "p2Up", ArrowDown: "p2Down",
+      Numpad1: "p2Melee", Numpad2: "p2Ranged", Numpad3: "p2Guard", Numpad0: "p2Run",
     }),
     alternate: Object.freeze({
-      ArrowLeft: "p1Left", ArrowRight: "p1Right", ArrowDown: "p1Crouch", Slash: "p1Fire", ArrowUp: "p1Jump",
-      KeyA: "p2Left", KeyD: "p2Right", KeyS: "p2Crouch", KeyE: "p2Fire", Space: "p2Jump",
+      ArrowLeft: "p1Left", ArrowRight: "p1Right", ArrowUp: "p1Up", ArrowDown: "p1Down",
+      Slash: "p1Melee", Period: "p1Ranged", Comma: "p1Guard", ShiftRight: "p1Run",
+      KeyA: "p2Left", KeyD: "p2Right", KeyW: "p2Up", KeyS: "p2Down",
+      KeyF: "p2Melee", KeyE: "p2Ranged", KeyQ: "p2Guard", ShiftLeft: "p2Run",
     }),
   });
 
@@ -192,10 +205,10 @@
 
   const I18N = Object.freeze({
     es: Object.freeze({
-      tagline: "ARENA DE BLOQUES DESTRUCTIBLES", play: "JUGAR", character: "PERSONAJE", editor: "EDITOR DE NIVELES", settings: "AJUSTES", soon: "PRÓXIMAMENTE", chooseMode: "ELEGÍ UN MODO", vsAi: "VS IA", localPvp: "PVP LOCAL", onlinePvp: "PVP ONLINE", stage3Soon: "ETAPA 3 · PRÓXIMAMENTE", visualOnly: "CAMBIOS SOLO VISUALES", identity: "Identidad", sex: "Sexo", male: "Hombre", female: "Mujer", skin: "Piel", hair: "Cabello", hairStyle: "Tipo de pelo", shortHair: "Corto", longHair: "Largo", bald: "Pelado", clothes: "Ropa", topStyle: "Torso", shortSleeve: "Manga corta", longSleeve: "Manga larga", noTop: "Sin camiseta", topColor: "Color del torso", bottomStyle: "Piernas", shorts: "Pantalón corto", longPants: "Pantalón largo", noPants: "Sin pantalones", bottomColor: "Color de piernas", footwearStyle: "Calzado", sneakers: "Zapatillas", dressShoes: "Zapatos", barefoot: "Descalzo", footwearColor: "Color del calzado", accessories: "Accesorios", darkGlasses: "Gafas oscuras", headband: "Vincha", wristbands: "Muñequeras", faceMask: "Barbijo", hood: "Capucha", belt: "Cinturón", vest: "Chaleco", previewMode: "Vista previa", previewIdle: "Idle", previewDemo: "Demostración", previewHint: "IDLE FIJO · DEMO: 3 SEGUNDOS POR ANIMACIÓN", animIdle: "IDLE", animRun: "CORRER", animSkid: "DETENERSE", animJump: "SALTAR", animFall: "CAER", animCrouch: "AGACHARSE", animFire: "DISPARAR", animHurt: "RECIBIR DAÑO", animStomp: "PISOTÓN", pauseWhenMatch: "LA PARTIDA SE PAUSA", language: "Idioma", fps: "FPS visuales", touchOpacity: "Opacidad controles táctiles", hidden: "Ocultos · no funcionan", controlPreset: "Controles de teclado", classic: "Clásicos", alternate: "Alternativos", sound: "Sonido", music: "Música", gridTypesOnly: "LA GRILLA SOLO GUARDA EL TIPO", floatingBrick: "LADRILLO FLOTANTE", groundBrick: "LADRILLO DE SUELO", eraser: "BORRADOR", testLevel: "PROBAR NIVEL", resetLevel: "RESTAURAR", jump: "SALTO", fire: "FUEGO", rematch: "REVANCHA", mainMenu: "MENÚ",
+      tagline: "ARENA DE BLOQUES DESTRUCTIBLES", play: "JUGAR", character: "PERSONAJE", editor: "EDITOR DE NIVELES", settings: "AJUSTES", soon: "PRÓXIMAMENTE", chooseMode: "ELEGÍ UN MODO", vsAi: "VS IA", localPvp: "PVP LOCAL", onlinePvp: "PVP ONLINE", stage3Soon: "ETAPA 3 · PRÓXIMAMENTE", visualOnly: "LUCHADOR MODULAR · CAMBIOS VISUALES", identity: "Identidad", sex: "Sexo", male: "Hombre", female: "Mujer", skin: "Piel", hair: "Cabello", hairStyle: "Tipo de pelo", shortHair: "Corto", longHair: "Largo", bald: "Pelado", clothes: "Ropa", topStyle: "Torso", shortSleeve: "Manga corta", longSleeve: "Manga larga", noTop: "Sin camiseta", topColor: "Color del torso", bottomStyle: "Piernas", shorts: "Pantalón corto", longPants: "Pantalón largo", noPants: "Sin pantalones", bottomColor: "Color de piernas", footwearStyle: "Calzado", sneakers: "Zapatillas", dressShoes: "Zapatos", barefoot: "Descalzo", footwearColor: "Color del calzado", accessories: "Accesorios", darkGlasses: "Gafas oscuras", headband: "Vincha", wristbands: "Muñequeras", faceMask: "Barbijo", hood: "Capucha", belt: "Cinturón", vest: "Chaleco", previewMode: "Vista previa", previewIdle: "Idle", previewDemo: "Demostración", previewHint: "IDLE FIJO · DEMO: 3 SEGUNDOS POR ANIMACIÓN", animIdle: "IDLE", animWalk: "MOVERSE", animRun: "CORRER", animSkid: "DETENERSE", animJump: "SALTAR", animFall: "CAER", animCrouch: "AGACHARSE", animMelee: "ATAQUE CORTO", animFire: "ATAQUE LARGO", animGuard: "COBERTURA", animHurt: "RECIBIR DAÑO", animStomp: "PISOTÓN", pauseWhenMatch: "LA PARTIDA SE PAUSA", language: "Idioma", fps: "FPS visuales", touchOpacity: "Opacidad controles táctiles", hidden: "Ocultos · no funcionan", controlPreset: "Controles de teclado", classic: "Clásicos", alternate: "Alternativos", sound: "Sonido", music: "Música", gridTypesOnly: "LA GRILLA SOLO GUARDA EL TIPO", floatingBrick: "LADRILLO FLOTANTE", groundBrick: "LADRILLO DE SUELO", eraser: "BORRADOR", testLevel: "PROBAR NIVEL", resetLevel: "RESTAURAR", jump: "SALTO", fire: "FUEGO", melee: "CORTO", ranged: "LARGO", guard: "CUBRIR", runAction: "CORRER", rematch: "REVANCHA", mainMenu: "MENÚ",
     }),
     en: Object.freeze({
-      tagline: "DESTRUCTIBLE BLOCK ARENA", play: "PLAY", character: "CHARACTER", editor: "LEVEL EDITOR", settings: "SETTINGS", soon: "COMING SOON", chooseMode: "CHOOSE A MODE", vsAi: "VS AI", localPvp: "LOCAL PVP", onlinePvp: "ONLINE PVP", stage3Soon: "STAGE 3 · COMING SOON", visualOnly: "VISUAL CHANGES ONLY", identity: "Identity", sex: "Sex", male: "Male", female: "Female", skin: "Skin", hair: "Hair", hairStyle: "Hair type", shortHair: "Short", longHair: "Long", bald: "Bald", clothes: "Clothes", topStyle: "Torso", shortSleeve: "Short sleeves", longSleeve: "Long sleeves", noTop: "No shirt", topColor: "Torso color", bottomStyle: "Legs", shorts: "Shorts", longPants: "Long pants", noPants: "No pants", bottomColor: "Leg color", footwearStyle: "Footwear", sneakers: "Sneakers", dressShoes: "Shoes", barefoot: "Barefoot", footwearColor: "Footwear color", accessories: "Accessories", darkGlasses: "Dark glasses", headband: "Headband", wristbands: "Wristbands", faceMask: "Face mask", hood: "Hood", belt: "Belt", vest: "Vest", previewMode: "Preview", previewIdle: "Idle", previewDemo: "Demo", previewHint: "FIXED IDLE · DEMO: 3 SECONDS PER ANIMATION", animIdle: "IDLE", animRun: "RUN", animSkid: "STOP", animJump: "JUMP", animFall: "FALL", animCrouch: "CROUCH", animFire: "FIRE", animHurt: "TAKE DAMAGE", animStomp: "STOMP", pauseWhenMatch: "THE MATCH IS PAUSED", language: "Language", fps: "Visual FPS", touchOpacity: "Touch controls opacity", hidden: "Hidden · disabled", controlPreset: "Keyboard controls", classic: "Classic", alternate: "Alternate", sound: "Sound", music: "Music", gridTypesOnly: "THE GRID ONLY STORES TILE TYPE", floatingBrick: "FLOATING BRICK", groundBrick: "GROUND BRICK", eraser: "ERASER", testLevel: "TEST LEVEL", resetLevel: "RESET", jump: "JUMP", fire: "FIRE", rematch: "REMATCH", mainMenu: "MENU",
+      tagline: "DESTRUCTIBLE BLOCK ARENA", play: "PLAY", character: "CHARACTER", editor: "LEVEL EDITOR", settings: "SETTINGS", soon: "COMING SOON", chooseMode: "CHOOSE A MODE", vsAi: "VS AI", localPvp: "LOCAL PVP", onlinePvp: "ONLINE PVP", stage3Soon: "STAGE 3 · COMING SOON", visualOnly: "MODULAR FIGHTER · VISUAL CHANGES", identity: "Identity", sex: "Sex", male: "Male", female: "Female", skin: "Skin", hair: "Hair", hairStyle: "Hair type", shortHair: "Short", longHair: "Long", bald: "Bald", clothes: "Clothes", topStyle: "Torso", shortSleeve: "Short sleeves", longSleeve: "Long sleeves", noTop: "No shirt", topColor: "Torso color", bottomStyle: "Legs", shorts: "Shorts", longPants: "Long pants", noPants: "No pants", bottomColor: "Leg color", footwearStyle: "Footwear", sneakers: "Sneakers", dressShoes: "Shoes", barefoot: "Barefoot", footwearColor: "Footwear color", accessories: "Accessories", darkGlasses: "Dark glasses", headband: "Headband", wristbands: "Wristbands", faceMask: "Face mask", hood: "Hood", belt: "Belt", vest: "Vest", previewMode: "Preview", previewIdle: "Idle", previewDemo: "Demo", previewHint: "FIXED IDLE · DEMO: 3 SECONDS PER ANIMATION", animIdle: "IDLE", animWalk: "MOVE", animRun: "RUN", animSkid: "STOP", animJump: "JUMP", animFall: "FALL", animCrouch: "CROUCH", animMelee: "CLOSE ATTACK", animFire: "RANGED ATTACK", animGuard: "GUARD", animHurt: "TAKE DAMAGE", animStomp: "STOMP", pauseWhenMatch: "THE MATCH IS PAUSED", language: "Language", fps: "Visual FPS", touchOpacity: "Touch controls opacity", hidden: "Hidden · disabled", controlPreset: "Keyboard controls", classic: "Classic", alternate: "Alternate", sound: "Sound", music: "Music", gridTypesOnly: "THE GRID ONLY STORES TILE TYPE", floatingBrick: "FLOATING BRICK", groundBrick: "GROUND BRICK", eraser: "ERASER", testLevel: "TEST LEVEL", resetLevel: "RESET", jump: "JUMP", fire: "FIRE", melee: "CLOSE", ranged: "RANGED", guard: "GUARD", runAction: "RUN", rematch: "REMATCH", mainMenu: "MENU",
     }),
   });
 
@@ -510,11 +523,14 @@
       this.lostHeartHalf = "right";
       this.lostHealthSegments = [];
       this.firePoseTimer = 0;
+      this.meleePoseTimer = 0;
       this.hurtPoseTimer = 0;
       this.stompPoseTimer = 0;
       this.skidTimer = 0;
       this.forcedCrouchTimer = 0;
       this.crouchJumping = false;
+      this.guarding = false;
+      this.running = false;
       this.animationTime = Math.random() * 2;
       this.animationState = "idle";
       this.previousAnimationState = "idle";
@@ -542,6 +558,7 @@
       this.invulnerability = Math.max(0, this.invulnerability - dt);
       this.lostHeartTimer = Math.max(0, this.lostHeartTimer - dt);
       this.firePoseTimer = Math.max(0, this.firePoseTimer - dt);
+      this.meleePoseTimer = Math.max(0, this.meleePoseTimer - dt);
       this.hurtPoseTimer = Math.max(0, this.hurtPoseTimer - dt);
       this.stompPoseTimer = Math.max(0, this.stompPoseTimer - dt);
       this.skidTimer = Math.max(0, this.skidTimer - dt);
@@ -555,10 +572,12 @@
       if (this.stompPoseTimer > 0) return "stomp";
       if (this.hurtPoseTimer > 0) return "hurt";
       if (this.crouching) return "crouch";
+      if (this.meleePoseTimer > 0) return "melee";
       if (this.firePoseTimer > 0) return "fire";
+      if (this.guarding) return "guard";
       if (!this.grounded) return this.vy < 20 ? "jump" : "fall";
       if (this.skidTimer > 0) return "skid";
-      if (Math.abs(this.vx) > 18) return "run";
+      if (Math.abs(this.vx) > 18) return this.running ? "run" : "walk";
       return "idle";
     }
 
@@ -605,29 +624,34 @@
       if (!this.alive) return;
       const forcedCrouch = this.forcedCrouchTimer > 0;
       this.setCrouching(Boolean(controls.crouch) || forcedCrouch, world, forcedCrouch);
+      this.guarding = Boolean(controls.guard) && !this.crouching && this.meleePoseTimer === 0;
+      this.running = Boolean(controls.run) && !this.crouching && !this.guarding;
+      if (controls.meleePressed && !this.crouching && !this.guarding) this.meleePoseTimer = 0.24;
       this.previousX = this.x;
       this.previousY = this.y;
 
-      const horizontalInput =
-        this.crouching && this.grounded
-          ? 0
-          : clamp(controls.horizontal || 0, -1, 1);
+      const horizontalInput = this.guarding ? 0 : clamp(controls.horizontal || 0, -1, 1);
       if (horizontalInput !== 0) {
         if (this.grounded && Math.abs(this.vx) > 150 && Math.sign(this.vx) !== horizontalInput) {
           this.skidTimer = 0.2;
         }
         this.facing = horizontalInput;
+        const targetSpeed = this.crouching
+          ? ACTOR_TUNING.crouchSpeed
+          : this.running
+            ? ACTOR_TUNING.runSpeed
+            : ACTOR_TUNING.walkSpeed;
         this.vx = moveToward(
           this.vx,
-          horizontalInput * ACTOR_TUNING.maxSpeed,
-          ACTOR_TUNING.acceleration * dt,
+          horizontalInput * targetSpeed,
+          ACTOR_TUNING.acceleration * dt * (this.crouching ? 0.55 : 1),
         );
       } else {
         if (this.grounded && Math.abs(this.vx) > 235) this.skidTimer = 0.14;
         this.vx = moveToward(this.vx, 0, ACTOR_TUNING.deceleration * dt);
       }
 
-      if (controls.jumpPressed && this.grounded && this.forcedCrouchTimer === 0) {
+      if (controls.jumpPressed && this.grounded && this.forcedCrouchTimer === 0 && !this.guarding) {
         this.crouchJumping = this.crouching;
         this.vy = ACTOR_TUNING.jumpVelocity;
         this.grounded = false;
@@ -905,6 +929,9 @@
         horizontal: this.horizontal,
         crouch: this.crouchTimer > 0,
         jumpPressed: this.jumpQueued,
+        meleePressed: false,
+        guard: false,
+        run: Math.abs(this.actor.centerX - game.player.centerX) > 260,
       };
       this.jumpQueued = false;
       return controls;
@@ -1225,8 +1252,8 @@
       if (!element) return;
       const alternate = this.settings.controlPreset === "alternate";
       element.textContent = alternate
-        ? "P1: ←/→ mover · ↓ agachar · ↑ saltar · / disparar | P2: A/D mover · S agachar · Espacio saltar · E disparar"
-        : "P1: A/D mover · S agachar · Espacio saltar · E disparar | P2: ←/→ mover · ↓ agachar · ↑ saltar · Enter disparar";
+        ? "P1: Flechas dirección · / corto · . largo · , cobertura · Shift der. correr | P2: WASD dirección · F corto · E largo · Q cobertura · Shift izq. correr"
+        : "P1: WASD dirección · F corto · E largo · Q cobertura · Shift izq. correr | P2: Flechas dirección · Num 1 corto · Num 2 largo · Num 3 cobertura · Num 0 correr";
     }
 
     openScreen(name, pauseMatch = true) {
@@ -1421,8 +1448,8 @@
       const clearPad = () => {
         this.input.setVirtual("p1Left", false);
         this.input.setVirtual("p1Right", false);
-        this.input.setVirtual("p1Crouch", false);
-        this.input.releaseVirtual("p1Jump");
+        this.input.setVirtual("p1Down", false);
+        this.input.releaseVirtual("p1Up");
         jumpDirectionHeld = false;
         if (touchStick) touchStick.style.transform = "translate(-50%, -50%)";
       };
@@ -1435,10 +1462,10 @@
         const max = bounds.width * 0.24;
         this.input.setVirtual("p1Left", dx < -threshold);
         this.input.setVirtual("p1Right", dx > threshold);
-        this.input.setVirtual("p1Crouch", dy > threshold);
+        this.input.setVirtual("p1Down", dy > threshold);
         const wantsJump = dy < -threshold;
-        if (wantsJump && !jumpDirectionHeld) this.input.pressVirtual("p1Jump");
-        if (!wantsJump && jumpDirectionHeld) this.input.releaseVirtual("p1Jump");
+        if (wantsJump && !jumpDirectionHeld) this.input.pressVirtual("p1Up");
+        if (!wantsJump && jumpDirectionHeld) this.input.releaseVirtual("p1Up");
         jumpDirectionHeld = wantsJump;
         if (touchStick) touchStick.style.transform = `translate(calc(-50% + ${clamp(dx, -max, max)}px), calc(-50% + ${clamp(dy, -max, max)}px))`;
       };
@@ -1464,16 +1491,18 @@
         button?.addEventListener("pointerup", release);
         button?.addEventListener("pointercancel", release);
       };
-      bindTouchButton(touchJump, "p1Jump");
-      bindTouchButton(touchFire, "p1Fire");
+      bindTouchButton(touchMelee, "p1Melee");
+      bindTouchButton(touchRanged, "p1Ranged");
+      bindTouchButton(touchGuard, "p1Guard");
+      bindTouchButton(touchRun, "p1Run");
 
       canvas.addEventListener("pointerdown", (event) => {
         canvas.focus({ preventScroll: true });
         if (this.state !== "playing") return;
         const bounds = canvas.getBoundingClientRect();
-        if (event.clientX >= bounds.left + bounds.width / 2) this.input.pressVirtual("p1Fire");
+        if (event.clientX >= bounds.left + bounds.width / 2) this.input.pressVirtual("p1Ranged");
       });
-      canvas.addEventListener("pointerup", () => this.input.releaseVirtual("p1Fire"));
+      canvas.addEventListener("pointerup", () => this.input.releaseVirtual("p1Ranged"));
     }
 
     update(dt) {
@@ -1489,8 +1518,11 @@
         dt,
         {
           horizontal: Number(this.input.isHeld("p1Right")) - Number(this.input.isHeld("p1Left")),
-          crouch: this.input.isHeld("p1Crouch"),
-          jumpPressed: this.input.consumePress("p1Jump"),
+          crouch: this.input.isHeld("p1Down"),
+          jumpPressed: this.input.consumePress("p1Up"),
+          meleePressed: this.input.consumePress("p1Melee"),
+          guard: this.input.isHeld("p1Guard"),
+          run: this.input.isHeld("p1Run"),
         },
         this.world,
         {
@@ -1499,15 +1531,18 @@
         },
       );
 
-      if (this.input.consumePress("p1Fire")) this.tryFire(this.player);
+      if (this.input.consumePress("p1Ranged")) this.tryFire(this.player);
 
       if (this.aiActor?.alive) {
         const aiControls = this.mode === "ai"
           ? this.ai.decide(dt, this)
           : {
               horizontal: Number(this.input.isHeld("p2Right")) - Number(this.input.isHeld("p2Left")),
-              crouch: this.input.isHeld("p2Crouch"),
-              jumpPressed: this.input.consumePress("p2Jump"),
+              crouch: this.input.isHeld("p2Down"),
+              jumpPressed: this.input.consumePress("p2Up"),
+              meleePressed: this.input.consumePress("p2Melee"),
+              guard: this.input.isHeld("p2Guard"),
+              run: this.input.isHeld("p2Run"),
             };
         this.aiActor.update(
           dt,
@@ -1518,7 +1553,7 @@
             onJump: () => this.audio.jump(),
           },
         );
-        if (this.mode === "ai" ? this.ai.firePressed : this.input.consumePress("p2Fire")) {
+        if (this.mode === "ai" ? this.ai.firePressed : this.input.consumePress("p2Ranged")) {
           this.tryFire(this.aiActor);
         }
       } else if (this.aiActor) {
@@ -1908,6 +1943,8 @@
               grounded: actor.grounded,
               crouching: actor.crouching,
               crouchJumping: actor.crouchJumping,
+              guarding: actor.guarding,
+              running: actor.running,
               animationState: actor.animationState,
               health: actor.health,
               maxHealth: actor.maxHealth,
@@ -2064,117 +2101,163 @@
 
     characterPose(state, time, actor) {
       const point = (x, y) => ({ x, y });
-      const breathe = Math.sin(time * 2.7) * 0.65;
+      const breathe = Math.sin(time * 2.25) * 0.55;
+      const balance = Math.sin(time * 1.12) * 0.7;
       let pose = {
-        hip: point(0, 53 + breathe), neck: point(0, 29 + breathe), head: point(1, 14 + breathe),
-        rearShoulder: point(-9, 32 + breathe), frontShoulder: point(9, 32 + breathe),
-        rearElbow: point(-12, 44 + breathe), rearHand: point(-10, 57 + breathe),
-        frontElbow: point(12, 44 + breathe), frontHand: point(10, 57 + breathe),
-        rearKnee: point(-6, 66), rearFoot: point(-7, 80),
-        frontKnee: point(7, 66), frontFoot: point(8, 80),
+        hip: point(-1 + balance * 0.25, 54 + breathe),
+        neck: point(1 + balance * 0.38, 29 + breathe),
+        head: point(2 + balance * 0.55, 14 + breathe),
+        rearShoulder: point(-10 + balance * 0.3, 31 + breathe),
+        frontShoulder: point(11 + balance * 0.4, 31 + breathe),
+        rearElbow: point(-14, 42 + breathe), rearHand: point(-4, 39 + breathe),
+        frontElbow: point(17, 39 + breathe), frontHand: point(18, 30 + breathe),
+        rearKnee: point(-8, 67), rearFoot: point(-11, 80),
+        frontKnee: point(8, 66), frontFoot: point(13, 80),
         lean: 0,
       };
 
       if (state === "fire") {
         const base = actor?.grounded === false ? (actor.vy < 20 ? "jump" : "fall") : "idle";
         pose = this.characterPose(base, time, actor);
-        pose.lean += 0.035;
-        pose.frontElbow = point(20, pose.frontShoulder.y + 1);
-        pose.frontHand = point(31, pose.frontShoulder.y + 1);
-        pose.rearElbow = point(-13, pose.rearShoulder.y + 8);
-        pose.rearHand = point(-8, pose.rearShoulder.y + 19);
+        pose.neck.x += 2;
+        pose.head.x += 2.5;
+        pose.frontElbow = point(22, pose.frontShoulder.y + 2);
+        pose.frontHand = point(34, pose.frontShoulder.y + 1);
+        pose.rearElbow = point(-12, pose.rearShoulder.y + 9);
+        pose.rearHand = point(-1, pose.rearShoulder.y + 7);
         return pose;
       }
 
-      if (state === "run") {
+      if (state === "walk") {
+        const stride = Math.sin(time * 8.2);
+        const lift = Math.cos(time * 8.2);
+        const bob = Math.abs(lift) * 0.8;
+        pose.hip = point(-1 + stride * 0.35, 54 - bob);
+        pose.neck = point(2, 29 - bob);
+        pose.head = point(3, 14 - bob);
+        pose.rearShoulder = point(-9, 31 - bob);
+        pose.frontShoulder = point(11, 31 - bob);
+        pose.rearElbow = point(-13 + stride * 4, 42 - bob);
+        pose.rearHand = point(-5 + stride * 7, 47 - bob);
+        pose.frontElbow = point(16 - stride * 4, 40 - bob);
+        pose.frontHand = point(17 - stride * 7, 33 - bob);
+        pose.rearKnee = point(-7 - stride * 4.5, 67 - Math.max(0, -lift) * 2);
+        pose.rearFoot = point(-10 - stride * 7, 80 - Math.max(0, -lift) * 4);
+        pose.frontKnee = point(8 + stride * 4.5, 66 - Math.max(0, lift) * 2);
+        pose.frontFoot = point(13 + stride * 7, 80 - Math.max(0, lift) * 4);
+      } else if (state === "run") {
         const stride = Math.sin(time * 13.5);
         const lift = Math.cos(time * 13.5);
-        const bob = Math.abs(lift) * 1.8;
-        pose.hip = point(stride * 0.8, 52 - bob);
-        pose.neck = point(1.5, 28 - bob);
-        pose.head = point(2.5, 13 - bob);
-        pose.rearShoulder = point(-8, 31 - bob);
-        pose.frontShoulder = point(10, 31 - bob);
-        pose.rearElbow = point(-10 + stride * 7, 44 - bob);
-        pose.rearHand = point(-7 + stride * 10, 57 - bob);
-        pose.frontElbow = point(12 - stride * 7, 43 - bob);
-        pose.frontHand = point(9 - stride * 10, 56 - bob);
-        pose.rearKnee = point(-6 - stride * 7, 65 - Math.max(0, -lift) * 3);
-        pose.rearFoot = point(-8 - stride * 10, 80 - Math.max(0, -lift) * 7);
-        pose.frontKnee = point(7 + stride * 7, 65 - Math.max(0, lift) * 3);
-        pose.frontFoot = point(9 + stride * 10, 80 - Math.max(0, lift) * 7);
-        pose.lean = 0.045;
+        const bob = Math.abs(lift) * 1.5;
+        pose.hip = point(1 + stride * 0.7, 52 - bob);
+        pose.neck = point(5, 28 - bob);
+        pose.head = point(7, 13 - bob);
+        pose.rearShoulder = point(-5, 31 - bob);
+        pose.frontShoulder = point(14, 30 - bob);
+        pose.rearElbow = point(-10 + stride * 8, 42 - bob);
+        pose.rearHand = point(-7 + stride * 12, 53 - bob);
+        pose.frontElbow = point(16 - stride * 8, 39 - bob);
+        pose.frontHand = point(14 - stride * 12, 49 - bob);
+        pose.rearKnee = point(-6 - stride * 8, 64 - Math.max(0, -lift) * 4);
+        pose.rearFoot = point(-9 - stride * 13, 80 - Math.max(0, -lift) * 8);
+        pose.frontKnee = point(8 + stride * 8, 64 - Math.max(0, lift) * 4);
+        pose.frontFoot = point(12 + stride * 13, 80 - Math.max(0, lift) * 8);
       } else if (state === "skid") {
-        pose.hip = point(-1, 53);
-        pose.neck = point(-3, 29);
-        pose.head = point(-5, 14);
-        pose.rearShoulder = point(-12, 31);
-        pose.frontShoulder = point(7, 33);
-        pose.rearElbow = point(-18, 39);
-        pose.rearHand = point(-20, 49);
-        pose.frontElbow = point(4, 45);
-        pose.frontHand = point(0, 55);
-        pose.rearKnee = point(-10, 66);
-        pose.rearFoot = point(-15, 80);
-        pose.frontKnee = point(8, 66);
-        pose.frontFoot = point(18, 80);
-        pose.lean = -0.12;
+        pose.hip = point(-4, 55);
+        pose.neck = point(-8, 30);
+        pose.head = point(-10, 15);
+        pose.rearShoulder = point(-16, 32);
+        pose.frontShoulder = point(3, 34);
+        pose.rearElbow = point(-23, 40);
+        pose.rearHand = point(-25, 50);
+        pose.frontElbow = point(8, 45);
+        pose.frontHand = point(3, 53);
+        pose.rearKnee = point(-13, 68);
+        pose.rearFoot = point(-20, 80);
+        pose.frontKnee = point(11, 66);
+        pose.frontFoot = point(23, 80);
       } else if (state === "jump") {
-        pose.hip = point(0, 51);
-        pose.neck = point(1, 28);
-        pose.head = point(2, 13);
-        pose.rearShoulder = point(-8, 31);
-        pose.frontShoulder = point(10, 31);
-        pose.rearElbow = point(-16, 24);
-        pose.rearHand = point(-12, 15);
-        pose.frontElbow = point(17, 24);
-        pose.frontHand = point(14, 14);
-        pose.rearKnee = point(-10, 59);
-        pose.rearFoot = point(-13, 71);
-        pose.frontKnee = point(11, 57);
-        pose.frontFoot = point(16, 68);
-        pose.lean = 0.035;
+        pose.hip = point(1, 50);
+        pose.neck = point(4, 27);
+        pose.head = point(6, 12);
+        pose.rearShoulder = point(-6, 30);
+        pose.frontShoulder = point(14, 29);
+        pose.rearElbow = point(-13, 24);
+        pose.rearHand = point(-7, 17);
+        pose.frontElbow = point(20, 23);
+        pose.frontHand = point(17, 14);
+        pose.rearKnee = point(-11, 58);
+        pose.rearFoot = point(-15, 70);
+        pose.frontKnee = point(13, 56);
+        pose.frontFoot = point(19, 67);
       } else if (state === "fall") {
-        pose.hip = point(0, 51);
-        pose.neck = point(-1, 29);
-        pose.head = point(0, 14);
-        pose.rearShoulder = point(-9, 32);
+        pose.hip = point(-1, 51);
+        pose.neck = point(-2, 29);
+        pose.head = point(-1, 14);
+        pose.rearShoulder = point(-11, 32);
         pose.frontShoulder = point(9, 32);
-        pose.rearElbow = point(-19, 35);
-        pose.rearHand = point(-22, 44);
-        pose.frontElbow = point(19, 35);
-        pose.frontHand = point(23, 44);
-        pose.rearKnee = point(-7, 65);
-        pose.rearFoot = point(-10, 77);
-        pose.frontKnee = point(8, 65);
-        pose.frontFoot = point(12, 78);
+        pose.rearElbow = point(-20, 36);
+        pose.rearHand = point(-25, 45);
+        pose.frontElbow = point(19, 36);
+        pose.frontHand = point(25, 45);
+        pose.rearKnee = point(-10, 63);
+        pose.rearFoot = point(-15, 77);
+        pose.frontKnee = point(11, 63);
+        pose.frontFoot = point(17, 78);
+      } else if (state === "melee") {
+        pose.hip = point(1, 54);
+        pose.neck = point(5, 29);
+        pose.head = point(7, 14);
+        pose.rearShoulder = point(-6, 31);
+        pose.frontShoulder = point(14, 30);
+        pose.rearElbow = point(-11, 40);
+        pose.rearHand = point(-1, 35);
+        pose.frontElbow = point(24, 31);
+        pose.frontHand = point(38, 29);
+        pose.rearKnee = point(-10, 67);
+        pose.rearFoot = point(-15, 80);
+        pose.frontKnee = point(10, 66);
+        pose.frontFoot = point(18, 80);
+      } else if (state === "guard") {
+        pose.hip = point(-2, 55);
+        pose.neck = point(-1, 30);
+        pose.head = point(0, 15);
+        pose.rearShoulder = point(-11, 33);
+        pose.frontShoulder = point(10, 32);
+        pose.rearElbow = point(-7, 43);
+        pose.rearHand = point(4, 36);
+        pose.frontElbow = point(17, 39);
+        pose.frontHand = point(14, 24);
+        pose.rearKnee = point(-10, 68);
+        pose.rearFoot = point(-15, 80);
+        pose.frontKnee = point(9, 67);
+        pose.frontFoot = point(16, 80);
       } else if (state === "hurt") {
         const shake = Math.sin(time * 42) * 1.4;
-        pose.hip = point(-2 + shake, 53);
-        pose.neck = point(-5 + shake, 29);
-        pose.head = point(-8 + shake, 14);
-        pose.rearShoulder = point(-13 + shake, 29);
-        pose.frontShoulder = point(5 + shake, 34);
-        pose.rearElbow = point(-20 + shake, 22);
-        pose.rearHand = point(-24 + shake, 15);
-        pose.frontElbow = point(13 + shake, 26);
-        pose.frontHand = point(17 + shake, 17);
-        pose.rearKnee = point(-9, 65);
-        pose.rearFoot = point(-14, 79);
-        pose.frontKnee = point(6, 66);
-        pose.frontFoot = point(11, 78);
-        pose.lean = -0.15;
+        pose.hip = point(-5 + shake, 54);
+        pose.neck = point(-10 + shake, 29);
+        pose.head = point(-13 + shake, 14);
+        pose.rearShoulder = point(-18 + shake, 30);
+        pose.frontShoulder = point(1 + shake, 34);
+        pose.rearElbow = point(-24 + shake, 23);
+        pose.rearHand = point(-28 + shake, 16);
+        pose.frontElbow = point(9 + shake, 25);
+        pose.frontHand = point(14 + shake, 17);
+        pose.rearKnee = point(-12, 66);
+        pose.rearFoot = point(-18, 80);
+        pose.frontKnee = point(7, 67);
+        pose.frontFoot = point(14, 80);
       } else if (state === "crouch" || state === "stomp") {
         const compressed = state === "stomp";
         const shake = compressed ? Math.sin(time * 38) * 1.2 : 0;
         pose = {
-          hip: point(-1 + shake, 31), neck: point(0 + shake, 17), head: point(2 + shake, 8),
-          rearShoulder: point(-9 + shake, 20), frontShoulder: point(9 + shake, 20),
-          rearElbow: point(-14 + shake, compressed ? 15 : 27), rearHand: point(-17 + shake, compressed ? 20 : 34),
-          frontElbow: point(15 + shake, compressed ? 15 : 27), frontHand: point(19 + shake, compressed ? 20 : 34),
-          rearKnee: point(-9, 34), rearFoot: point(-13, 40),
-          frontKnee: point(8, 34), frontFoot: point(14, 40),
-          lean: compressed ? -0.08 : 0.06,
+          hip: point(-2 + shake, 30), neck: point(1 + shake, 17), head: point(3 + shake, 8),
+          rearShoulder: point(-9 + shake, 20), frontShoulder: point(11 + shake, 19),
+          rearElbow: point(-13 + shake, compressed ? 15 : 27), rearHand: point(-3 + shake, compressed ? 20 : 24),
+          frontElbow: point(17 + shake, compressed ? 15 : 26), frontHand: point(18 + shake, compressed ? 20 : 17),
+          rearKnee: point(-11, 34), rearFoot: point(-17, 40),
+          frontKnee: point(10, 33), frontFoot: point(18, 40),
+          lean: 0,
         };
       }
       return pose;
@@ -2208,49 +2291,48 @@
       }
 
       context.save();
-      context.rotate(pose.lean);
       context.lineCap = "round";
       context.lineJoin = "round";
 
       this.drawHairBack(context, pose, appearance);
       this.drawLeg(context, pose.hip, pose.rearKnee, pose.rearFoot, appearance, false);
-      this.drawArm(context, pose.rearShoulder, pose.rearElbow, pose.rearHand, appearance, false);
+      this.drawArm(context, pose.rearShoulder, pose.rearElbow, pose.rearHand, appearance, false, false);
       this.drawTorso(context, pose, appearance);
+      this.drawFist(context, pose.rearHand, appearance.skin, false);
       this.drawLeg(context, pose.hip, pose.frontKnee, pose.frontFoot, appearance, true);
-      this.drawArm(context, pose.frontShoulder, pose.frontElbow, pose.frontHand, appearance, true);
+      this.drawArm(context, pose.frontShoulder, pose.frontElbow, pose.frontHand, appearance, true, false);
       this.drawHead(context, pose, appearance, state, time);
-      this.drawCharacterAccessories(context, pose, appearance);
+      this.drawCharacterAccessories(context, pose, appearance, "head");
+      this.drawFist(context, pose.frontHand, appearance.skin, true);
+      this.drawCharacterAccessories(context, pose, appearance, "wrists");
       context.restore();
     }
 
-    drawSegment(context, from, to, width, color, outline = "#111827") {
-      context.beginPath();
-      context.moveTo(from.x, from.y);
-      context.lineTo(to.x, to.y);
-      context.strokeStyle = outline;
-      context.lineWidth = width + 3;
-      context.stroke();
-      context.beginPath();
-      context.moveTo(from.x, from.y);
-      context.lineTo(to.x, to.y);
-      context.strokeStyle = color;
-      context.lineWidth = width;
-      context.stroke();
-    }
-
-    drawJointedPath(context, points, width, color, outline = "#111827") {
-      context.beginPath();
-      context.moveTo(points[0].x, points[0].y);
-      for (const point of points.slice(1)) context.lineTo(point.x, point.y);
-      context.strokeStyle = outline;
-      context.lineWidth = width + 3;
-      context.stroke();
-      context.beginPath();
-      context.moveTo(points[0].x, points[0].y);
-      for (const point of points.slice(1)) context.lineTo(point.x, point.y);
-      context.strokeStyle = color;
-      context.lineWidth = width;
-      context.stroke();
+    drawTaperedLimb(context, points, widths, color, outline = "#0b1422") {
+      const normal = (from, to) => {
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const length = Math.hypot(dx, dy) || 1;
+        return { x: -dy / length, y: dx / length };
+      };
+      const segmentNormals = points.slice(0, -1).map((point, index) => normal(point, points[index + 1]));
+      const pointNormals = points.map((point, index) => {
+        if (index === 0) return segmentNormals[0];
+        if (index === points.length - 1) return segmentNormals[segmentNormals.length - 1];
+        const x = segmentNormals[index - 1].x + segmentNormals[index].x;
+        const y = segmentNormals[index - 1].y + segmentNormals[index].y;
+        const length = Math.hypot(x, y) || 1;
+        return { x: x / length, y: y / length };
+      });
+      const left = points.map((point, index) => ({
+        x: point.x + pointNormals[index].x * widths[index] * 0.5,
+        y: point.y + pointNormals[index].y * widths[index] * 0.5,
+      }));
+      const right = points.map((point, index) => ({
+        x: point.x - pointNormals[index].x * widths[index] * 0.5,
+        y: point.y - pointNormals[index].y * widths[index] * 0.5,
+      })).reverse();
+      this.drawPolygon(context, [...left, ...right], color, outline, 1.65);
     }
 
     drawPolygon(context, points, fill, outline = "#111827", width = 2) {
@@ -2267,54 +2349,83 @@
       }
     }
 
+    drawFist(context, hand, color, front) {
+      const fill = front ? color : shadeColor(color, -18);
+      this.drawPolygon(context, [
+        { x: hand.x - 4.5, y: hand.y - 3 },
+        { x: hand.x - 1, y: hand.y - 5 },
+        { x: hand.x + 4.5, y: hand.y - 3.5 },
+        { x: hand.x + 6, y: hand.y + 0.5 },
+        { x: hand.x + 3, y: hand.y + 5 },
+        { x: hand.x - 3.5, y: hand.y + 4 },
+        { x: hand.x - 5, y: hand.y + 0.5 },
+      ], fill, "#0b1422", 1.55);
+      context.strokeStyle = shadeColor(fill, -28);
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(hand.x + 0.5, hand.y - 2.7);
+      context.lineTo(hand.x + 3.7, hand.y + 1.4);
+      context.stroke();
+    }
+
     drawLeg(context, hip, knee, foot, appearance, front) {
-      const side = front ? 2.4 : -2.4;
-      const upperStart = { x: hip.x + side, y: hip.y - 1 };
-      const ankle = { x: foot.x, y: foot.y - 4 };
+      const side = front ? 3.4 : -3.4;
+      const upperStart = { x: hip.x + side, y: hip.y - 1.5 };
+      const ankle = { x: foot.x, y: foot.y - 5 };
       const skinShadow = shadeColor(appearance.skin, -22);
       const skin = front ? appearance.skin : skinShadow;
       if (appearance.bottomStyle === "longPants") {
         const cloth = shadeColor(appearance.pants, front ? 8 : -18);
-        this.drawJointedPath(context, [upperStart, knee, ankle], 8, cloth);
-        context.strokeStyle = shadeColor(cloth, 35);
-        context.lineWidth = 1.2;
+        this.drawTaperedLimb(context, [upperStart, knee, ankle], [10.5, 8.8, 7.2], cloth);
+        context.strokeStyle = shadeColor(cloth, 32);
+        context.lineWidth = 1.1;
         context.beginPath();
-        context.moveTo(knee.x + (front ? 2 : -2), knee.y - 2);
-        context.lineTo(ankle.x + (front ? 2 : -2), ankle.y - 1);
+        context.moveTo(upperStart.x + (front ? 2.2 : -2.2), upperStart.y + 2);
+        context.lineTo(knee.x + (front ? 2 : -2), knee.y - 1);
+        context.lineTo(ankle.x + (front ? 1.7 : -1.7), ankle.y - 1);
         context.stroke();
       } else if (appearance.bottomStyle === "shorts") {
-        const thigh = { x: mixNumber(upperStart.x, knee.x, 0.58), y: mixNumber(upperStart.y, knee.y, 0.58) };
-        this.drawJointedPath(context, [upperStart, knee, ankle], 6.5, skin);
-        this.drawSegment(context, upperStart, thigh, 9.5, shadeColor(appearance.pants, front ? 6 : -16));
-        context.fillStyle = shadeColor(appearance.pants, -28);
-        context.fillRect(thigh.x - 4, thigh.y - 1, 8, 2);
+        const hem = { x: mixNumber(upperStart.x, knee.x, 0.56), y: mixNumber(upperStart.y, knee.y, 0.56) };
+        this.drawTaperedLimb(context, [upperStart, knee, ankle], [8.6, 7.4, 6.2], skin);
+        this.drawTaperedLimb(
+          context,
+          [upperStart, hem],
+          [11, 9.2],
+          shadeColor(appearance.pants, front ? 6 : -16),
+        );
+        context.strokeStyle = shadeColor(appearance.pants, -34);
+        context.lineWidth = 1.2;
+        context.beginPath();
+        context.moveTo(hem.x - 4, hem.y);
+        context.lineTo(hem.x + 4, hem.y);
+        context.stroke();
       } else {
-        this.drawJointedPath(context, [upperStart, knee, ankle], 6.5, skin);
+        this.drawTaperedLimb(context, [upperStart, knee, ankle], [8.7, 7.5, 6.2], skin);
       }
       this.drawFoot(context, foot, appearance, front);
     }
 
     drawFoot(context, foot, appearance, front) {
       const color = appearance.footwearStyle === "barefoot" ? appearance.skin : appearance.shoes;
-      const width = appearance.footwearStyle === "shoes" ? 14 : 13;
-      const height = appearance.footwearStyle === "barefoot" ? 5 : 7;
+      const width = appearance.footwearStyle === "shoes" ? 15.5 : 14.5;
+      const height = appearance.footwearStyle === "barefoot" ? 5.5 : 7;
       const points = [
-        { x: foot.x - 5, y: foot.y - height },
-        { x: foot.x + width - 6, y: foot.y - height + (front ? 0 : 1) },
-        { x: foot.x + width - 3, y: foot.y - 2 },
-        { x: foot.x + width - 5, y: foot.y },
-        { x: foot.x - 6, y: foot.y },
+        { x: foot.x - 5.5, y: foot.y - height },
+        { x: foot.x + width - 7, y: foot.y - height + (front ? 0 : 0.8) },
+        { x: foot.x + width - 2.5, y: foot.y - 3 },
+        { x: foot.x + width - 4.5, y: foot.y },
+        { x: foot.x - 6.5, y: foot.y },
       ];
-      this.drawPolygon(context, points, color);
+      this.drawPolygon(context, points, front ? color : shadeColor(color, -16), "#0b1422", 1.65);
       if (appearance.footwearStyle === "sneakers") {
         context.strokeStyle = shadeColor(appearance.shoes, 60);
-        context.lineWidth = 1.4;
+        context.lineWidth = 1.15;
         context.beginPath();
-        context.moveTo(foot.x - 1, foot.y - 5);
-        context.lineTo(foot.x + 6, foot.y - 4);
+        context.moveTo(foot.x - 1, foot.y - 5.2);
+        context.lineTo(foot.x + 6.5, foot.y - 4.2);
         context.stroke();
         context.fillStyle = "#f4f7fb";
-        context.fillRect(foot.x - 5, foot.y - 2, width + 2, 2);
+        context.fillRect(foot.x - 5.2, foot.y - 1.8, width + 1.2, 1.8);
       } else if (appearance.footwearStyle === "shoes") {
         context.fillStyle = shadeColor(appearance.shoes, 35);
         context.fillRect(foot.x + 2, foot.y - 6, 5, 2);
@@ -2324,70 +2435,97 @@
       }
     }
 
-    drawArm(context, shoulder, elbow, hand, appearance, front) {
+    drawArm(context, shoulder, elbow, hand, appearance, front, drawHand = true) {
       const skin = front ? appearance.skin : shadeColor(appearance.skin, -20);
-      const wrist = { x: mixNumber(elbow.x, hand.x, 0.82), y: mixNumber(elbow.y, hand.y, 0.82) };
-      this.drawJointedPath(context, [shoulder, elbow, wrist], 6.5, skin);
+      const wrist = { x: mixNumber(elbow.x, hand.x, 0.8), y: mixNumber(elbow.y, hand.y, 0.8) };
+      this.drawTaperedLimb(context, [shoulder, elbow, wrist], [8.6, 7.1, 5.4], skin);
       if (appearance.topStyle === "longSleeve") {
-        this.drawJointedPath(
+        this.drawTaperedLimb(
           context,
           [shoulder, elbow, wrist],
-          7.5,
+          [9.5, 7.9, 6.1],
           shadeColor(appearance.shirt, front ? 8 : -16),
         );
-        context.fillStyle = shadeColor(appearance.shirt, 35);
-        context.fillRect(wrist.x - 3, wrist.y - 2, 6, 2);
+        context.strokeStyle = shadeColor(appearance.shirt, 38);
+        context.lineWidth = 1.05;
+        context.beginPath();
+        context.moveTo(shoulder.x + 2, shoulder.y + 2);
+        context.lineTo(elbow.x + 1.5, elbow.y);
+        context.lineTo(wrist.x + 1.2, wrist.y - 1);
+        context.stroke();
       } else if (appearance.topStyle === "shortSleeve") {
         const sleeveEnd = {
-          x: mixNumber(shoulder.x, elbow.x, 0.45),
-          y: mixNumber(shoulder.y, elbow.y, 0.45),
+          x: mixNumber(shoulder.x, elbow.x, 0.48),
+          y: mixNumber(shoulder.y, elbow.y, 0.48),
         };
-        this.drawSegment(context, shoulder, sleeveEnd, 9, shadeColor(appearance.shirt, front ? 6 : -15));
-        context.fillStyle = shadeColor(appearance.shirt, -24);
-        context.fillRect(sleeveEnd.x - 3.5, sleeveEnd.y - 1, 7, 2);
+        this.drawTaperedLimb(
+          context,
+          [shoulder, sleeveEnd],
+          [10.2, 8.7],
+          shadeColor(appearance.shirt, front ? 6 : -15),
+        );
+        context.strokeStyle = shadeColor(appearance.shirt, -28);
+        context.lineWidth = 1.2;
+        context.beginPath();
+        context.moveTo(sleeveEnd.x - 3.5, sleeveEnd.y);
+        context.lineTo(sleeveEnd.x + 3.5, sleeveEnd.y);
+        context.stroke();
       }
-      context.beginPath();
-      context.ellipse(hand.x, hand.y, 4.1, 4.5, 0, 0, Math.PI * 2);
-      context.fillStyle = skin;
-      context.fill();
-      context.strokeStyle = "#111827";
-      context.lineWidth = 1.7;
-      context.stroke();
+      if (drawHand) this.drawFist(context, hand, appearance.skin, front);
     }
 
     drawTorso(context, pose, appearance) {
       const female = appearance.sex === "female";
-      const shoulderWidth = female ? 10.5 : 12.5;
-      const waistWidth = female ? 7.5 : 9.5;
+      const shoulderWidth = female ? 11.5 : 14;
+      const waistWidth = female ? 8 : 10;
       const torso = [
-        { x: pose.neck.x - 5, y: pose.neck.y - 1 },
-        { x: pose.frontShoulder.x + shoulderWidth - 7, y: pose.frontShoulder.y },
+        { x: pose.neck.x - 5.5, y: pose.neck.y - 1 },
+        { x: pose.frontShoulder.x + shoulderWidth - 8, y: pose.frontShoulder.y - 1 },
         { x: pose.hip.x + waistWidth, y: pose.hip.y + 2 },
         { x: pose.hip.x - waistWidth, y: pose.hip.y + 2 },
-        { x: pose.rearShoulder.x - shoulderWidth + 7, y: pose.rearShoulder.y },
+        { x: pose.rearShoulder.x - shoulderWidth + 8, y: pose.rearShoulder.y },
       ];
       const torsoColor = appearance.topStyle === "noTop" ? appearance.skin : appearance.shirt;
-      this.drawPolygon(context, torso, torsoColor);
-      context.fillStyle = shadeColor(torsoColor, 26);
-      context.fillRect(pose.neck.x - 3, pose.neck.y + 2, 7, 2);
-      context.fillRect(pose.frontShoulder.x + 1, pose.frontShoulder.y + 4, 2, 11);
+      this.drawPolygon(context, torso, torsoColor, "#0b1422", 1.8);
+      this.drawPolygon(context, [
+        torso[4], { x: pose.neck.x - 1, y: pose.neck.y + 3 },
+        { x: pose.hip.x - 1.5, y: pose.hip.y }, torso[3],
+      ], shadeColor(torsoColor, -18), null, 0);
+      context.strokeStyle = shadeColor(torsoColor, 30);
+      context.lineWidth = 1.15;
+      context.beginPath();
+      context.moveTo(pose.neck.x + 3, pose.neck.y + 4);
+      context.lineTo(pose.frontShoulder.x + 2, pose.frontShoulder.y + 4);
+      context.lineTo(pose.hip.x + waistWidth - 2, pose.hip.y - 2);
+      context.stroke();
 
       if (appearance.topStyle !== "noTop") {
         context.strokeStyle = shadeColor(appearance.shirt, -35);
-        context.lineWidth = 1.3;
+        context.lineWidth = 1.25;
         context.beginPath();
-        context.arc(pose.neck.x, pose.neck.y + 1, 5, 0.18, Math.PI - 0.18);
+        context.arc(pose.neck.x, pose.neck.y + 1, 5.3, 0.16, Math.PI - 0.16);
         context.stroke();
       } else if (!female) {
-        context.fillStyle = shadeColor(appearance.skin, -24);
-        context.fillRect(pose.neck.x - 5, pose.neck.y + 8, 10, 1.4);
+        context.strokeStyle = shadeColor(appearance.skin, -28);
+        context.lineWidth = 1.2;
+        context.beginPath();
+        context.moveTo(pose.neck.x - 6, pose.neck.y + 8);
+        context.lineTo(pose.neck.x, pose.neck.y + 11);
+        context.lineTo(pose.neck.x + 6, pose.neck.y + 8);
+        context.stroke();
       }
 
       if (female && appearance.topStyle === "noTop") {
-        context.fillStyle = "#111318";
-        context.fillRect(pose.hip.x - 9, pose.neck.y + 8, 18, 7);
-        context.fillStyle = "#333842";
-        context.fillRect(pose.hip.x - 6, pose.neck.y + 9, 11, 2);
+        this.drawPolygon(context, [
+          { x: pose.neck.x - 8, y: pose.neck.y + 8 }, { x: pose.neck.x + 9, y: pose.neck.y + 8 },
+          { x: pose.neck.x + 8, y: pose.neck.y + 16 }, { x: pose.neck.x - 8, y: pose.neck.y + 16 },
+        ], "#111318", "#0b1422", 1.2);
+        context.strokeStyle = "#414955";
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(pose.neck.x - 5, pose.neck.y + 10);
+        context.lineTo(pose.neck.x + 5, pose.neck.y + 10);
+        context.stroke();
       }
 
       if (appearance.bottomStyle === "noPants") {
@@ -2395,40 +2533,49 @@
           this.drawPolygon(context, [
             { x: pose.hip.x - 10, y: pose.hip.y - 5 }, { x: pose.hip.x + 10, y: pose.hip.y - 5 },
             { x: pose.hip.x + 5, y: pose.hip.y + 5 }, { x: pose.hip.x - 5, y: pose.hip.y + 5 },
-          ], "#101318");
+          ], "#101318", "#0b1422", 1.6);
         } else {
-          context.fillStyle = "#101318";
-          context.fillRect(pose.hip.x - 10, pose.hip.y - 5, 20, 11);
-          context.strokeStyle = "#111827";
-          context.lineWidth = 2;
-          context.strokeRect(pose.hip.x - 10, pose.hip.y - 5, 20, 11);
-          context.fillStyle = "#f2f4f7";
-          context.fillRect(pose.hip.x - 9, pose.hip.y - 4, 18, 2);
-          context.fillStyle = "#323842";
-          context.fillRect(pose.hip.x - 1, pose.hip.y - 2, 2, 7);
+          this.drawPolygon(context, [
+            { x: pose.hip.x - 10.5, y: pose.hip.y - 5.5 }, { x: pose.hip.x + 10.5, y: pose.hip.y - 5.5 },
+            { x: pose.hip.x + 7, y: pose.hip.y + 5 }, { x: pose.hip.x - 7, y: pose.hip.y + 5 },
+          ], "#090c12", "#0b1422", 1.6);
+          context.fillStyle = "#2f3744";
+          context.fillRect(pose.hip.x - 8.5, pose.hip.y - 3.8, 17, 1.7);
+          context.strokeStyle = "#3c4654";
+          context.lineWidth = 1;
+          context.beginPath();
+          context.moveTo(pose.hip.x, pose.hip.y - 2);
+          context.lineTo(pose.hip.x, pose.hip.y + 4);
+          context.stroke();
         }
       } else {
-        context.fillStyle = shadeColor(appearance.pants, -18);
-        context.fillRect(pose.hip.x - 10, pose.hip.y - 4, 20, 7);
+        this.drawPolygon(context, [
+          { x: pose.hip.x - 10.5, y: pose.hip.y - 5 }, { x: pose.hip.x + 10.5, y: pose.hip.y - 5 },
+          { x: pose.hip.x + 8, y: pose.hip.y + 4 }, { x: pose.hip.x - 8, y: pose.hip.y + 4 },
+        ], shadeColor(appearance.pants, -14), "#0b1422", 1.5);
       }
 
       if (appearance.vest) {
         const vestColor = appearance.vestColor;
         this.drawPolygon(context, [
-          { x: pose.neck.x + 2, y: pose.neck.y + 4 }, torso[1], torso[2],
-          { x: pose.hip.x + 3, y: pose.hip.y - 1 },
-        ], vestColor, "#111827", 1.4);
+          { x: pose.neck.x + 2, y: pose.neck.y + 4 }, torso[1],
+          { x: pose.hip.x + waistWidth, y: pose.hip.y - 1 }, { x: pose.hip.x + 3, y: pose.hip.y - 1 },
+        ], vestColor, "#0b1422", 1.35);
         this.drawPolygon(context, [
           torso[4], { x: pose.neck.x - 2, y: pose.neck.y + 4 },
-          { x: pose.hip.x - 3, y: pose.hip.y - 1 }, torso[3],
-        ], shadeColor(vestColor, -12), "#111827", 1.4);
-        context.fillStyle = shadeColor(vestColor, 45);
-        context.fillRect(pose.hip.x + 5, pose.neck.y + 12, 2, 7);
+          { x: pose.hip.x - 3, y: pose.hip.y - 1 }, { x: pose.hip.x - waistWidth, y: pose.hip.y - 1 },
+        ], shadeColor(vestColor, -14), "#0b1422", 1.35);
+        context.strokeStyle = shadeColor(vestColor, 48);
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(pose.neck.x + 6, pose.neck.y + 8);
+        context.lineTo(pose.hip.x + 6, pose.hip.y - 4);
+        context.stroke();
       }
 
       if (appearance.belt) {
-        context.strokeStyle = "#111827";
-        context.lineWidth = 5;
+        context.strokeStyle = "#0b1422";
+        context.lineWidth = 5.2;
         context.beginPath();
         context.moveTo(pose.hip.x - 10, pose.hip.y - 1);
         context.lineTo(pose.hip.x + 10, pose.hip.y - 1);
@@ -2443,69 +2590,120 @@
 
     drawHairBack(context, pose, appearance) {
       if (appearance.hood) {
-        context.beginPath();
-        context.ellipse(pose.head.x - 1, pose.head.y + 1, 14, 16, 0, 0, Math.PI * 2);
-        context.fillStyle = appearance.hoodColor;
-        context.fill();
-        context.strokeStyle = "#111827";
-        context.lineWidth = 2;
-        context.stroke();
+        this.drawPolygon(context, [
+          { x: pose.head.x - 10, y: pose.head.y - 10 },
+          { x: pose.head.x + 5, y: pose.head.y - 13 },
+          { x: pose.head.x + 14, y: pose.head.y - 4 },
+          { x: pose.head.x + 12, y: pose.head.y + 10 },
+          { x: pose.neck.x + 9, y: pose.neck.y + 8 },
+          { x: pose.neck.x - 11, y: pose.neck.y + 7 },
+          { x: pose.head.x - 14, y: pose.head.y + 3 },
+        ], shadeColor(appearance.hoodColor, -18), "#0b1422", 1.8);
       }
       if (appearance.hood || appearance.hairStyle !== "long") return;
       this.drawPolygon(context, [
-        { x: pose.head.x - 11, y: pose.head.y - 7 }, { x: pose.head.x + 8, y: pose.head.y - 6 },
-        { x: pose.head.x + 10, y: pose.head.y + 20 }, { x: pose.neck.x + 8, y: pose.neck.y + 12 },
-        { x: pose.neck.x - 10, y: pose.neck.y + 13 }, { x: pose.head.x - 13, y: pose.head.y + 4 },
-      ], shadeColor(appearance.hair, -16));
+        { x: pose.head.x - 11, y: pose.head.y - 8 }, { x: pose.head.x + 7, y: pose.head.y - 8 },
+        { x: pose.head.x + 11, y: pose.head.y + 7 }, { x: pose.neck.x + 8, y: pose.neck.y + 13 },
+        { x: pose.neck.x - 11, y: pose.neck.y + 12 }, { x: pose.head.x - 14, y: pose.head.y + 3 },
+      ], shadeColor(appearance.hair, -18), "#0b1422", 1.7);
+      context.strokeStyle = shadeColor(appearance.hair, 28);
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(pose.head.x - 7, pose.head.y - 5);
+      context.lineTo(pose.neck.x - 6, pose.neck.y + 8);
+      context.stroke();
     }
 
     drawHead(context, pose, appearance, state, time) {
       const female = appearance.sex === "female";
       context.beginPath();
-      context.ellipse(pose.head.x, pose.head.y, female ? 9.5 : 10.5, 11.5, 0, 0, Math.PI * 2);
+      context.ellipse(pose.head.x - 8.8, pose.head.y + 0.5, 3.4, 4.4, 0, 0, Math.PI * 2);
+      context.fillStyle = shadeColor(appearance.skin, -12);
+      context.fill();
+      context.strokeStyle = "#0b1422";
+      context.lineWidth = 1.2;
+      context.stroke();
+      context.beginPath();
+      context.ellipse(pose.head.x, pose.head.y, female ? 9.8 : 10.6, female ? 11.2 : 11.7, -0.04, 0, Math.PI * 2);
       context.fillStyle = appearance.skin;
       context.fill();
-      context.strokeStyle = "#111827";
-      context.lineWidth = 2;
+      context.strokeStyle = "#0b1422";
+      context.lineWidth = 1.7;
       context.stroke();
-      context.fillStyle = shadeColor(appearance.skin, 32);
-      context.fillRect(pose.head.x + 3, pose.head.y - 6, 4, 2);
+      context.fillStyle = shadeColor(appearance.skin, 30);
+      context.beginPath();
+      context.ellipse(pose.head.x + 3.5, pose.head.y - 2, 3.2, 7.2, -0.15, 0, Math.PI * 2);
+      context.fill();
 
       if (appearance.hairStyle === "short" && !appearance.hood) {
         this.drawPolygon(context, [
-          { x: pose.head.x - 10, y: pose.head.y - 4 }, { x: pose.head.x - 7, y: pose.head.y - 11 },
-          { x: pose.head.x - 2, y: pose.head.y - 9 }, { x: pose.head.x + 1, y: pose.head.y - 13 },
-          { x: pose.head.x + 5, y: pose.head.y - 9 }, { x: pose.head.x + 10, y: pose.head.y - 7 },
-          { x: pose.head.x + 8, y: pose.head.y - 2 }, { x: pose.head.x - 9, y: pose.head.y + 1 },
-        ], appearance.hair);
+          { x: pose.head.x - 10, y: pose.head.y - 3 }, { x: pose.head.x - 8, y: pose.head.y - 10 },
+          { x: pose.head.x - 3, y: pose.head.y - 12 }, { x: pose.head.x, y: pose.head.y - 15 },
+          { x: pose.head.x + 3, y: pose.head.y - 11 }, { x: pose.head.x + 7, y: pose.head.y - 13 },
+          { x: pose.head.x + 10, y: pose.head.y - 7 }, { x: pose.head.x + 7, y: pose.head.y - 4 },
+          { x: pose.head.x + 3, y: pose.head.y - 7 }, { x: pose.head.x, y: pose.head.y - 4 },
+          { x: pose.head.x - 4, y: pose.head.y - 6 }, { x: pose.head.x - 8, y: pose.head.y + 1 },
+        ], appearance.hair, "#0b1422", 1.55);
       } else if (appearance.hairStyle === "long" && !appearance.hood) {
         this.drawPolygon(context, [
-          { x: pose.head.x - 10, y: pose.head.y - 4 }, { x: pose.head.x - 7, y: pose.head.y - 11 },
-          { x: pose.head.x + 1, y: pose.head.y - 12 }, { x: pose.head.x + 10, y: pose.head.y - 6 },
-          { x: pose.head.x + 8, y: pose.head.y - 1 }, { x: pose.head.x - 9, y: pose.head.y + 1 },
-        ], appearance.hair);
-        context.fillStyle = appearance.hair;
-        context.fillRect(pose.head.x - 11, pose.head.y - 2, 4, 13);
+          { x: pose.head.x - 10, y: pose.head.y - 3 }, { x: pose.head.x - 8, y: pose.head.y - 10 },
+          { x: pose.head.x - 2, y: pose.head.y - 13 }, { x: pose.head.x + 4, y: pose.head.y - 12 },
+          { x: pose.head.x + 10, y: pose.head.y - 6 }, { x: pose.head.x + 7, y: pose.head.y - 3 },
+          { x: pose.head.x + 2, y: pose.head.y - 6 }, { x: pose.head.x - 3, y: pose.head.y - 3 },
+          { x: pose.head.x - 8, y: pose.head.y + 2 },
+        ], appearance.hair, "#0b1422", 1.55);
+        this.drawPolygon(context, [
+          { x: pose.head.x - 10, y: pose.head.y - 1 }, { x: pose.head.x - 6, y: pose.head.y },
+          { x: pose.head.x - 7, y: pose.head.y + 12 }, { x: pose.head.x - 12, y: pose.head.y + 10 },
+        ], shadeColor(appearance.hair, -10), "#0b1422", 1.2);
       } else if (appearance.hood && appearance.hairStyle !== "bald") {
         this.drawPolygon(context, [
-          { x: pose.head.x - 5, y: pose.head.y - 9 }, { x: pose.head.x + 4, y: pose.head.y - 10 },
-          { x: pose.head.x + 8, y: pose.head.y - 5 }, { x: pose.head.x + 2, y: pose.head.y - 6 },
-          { x: pose.head.x - 3, y: pose.head.y - 3 },
+          { x: pose.head.x - 5, y: pose.head.y - 9 }, { x: pose.head.x + 3, y: pose.head.y - 10 },
+          { x: pose.head.x + 7, y: pose.head.y - 6 }, { x: pose.head.x + 2, y: pose.head.y - 6 },
+          { x: pose.head.x - 3, y: pose.head.y - 3 }, { x: pose.head.x - 6, y: pose.head.y - 5 },
         ], appearance.hair, null, 0);
       }
 
       const blink = state === "hurt" || Math.sin(time * 2.1) > 0.985;
-      context.fillStyle = "#101827";
-      context.fillRect(pose.head.x + 5, pose.head.y - (blink ? 1 : 3), 3.2, blink ? 1.5 : 3.2);
-      context.fillRect(pose.head.x + 8, pose.head.y + 4, 3.5, 1.5);
-      context.fillStyle = shadeColor(appearance.skin, -18);
-      context.fillRect(pose.head.x + 9, pose.head.y, 4, 3);
-      context.fillStyle = shadeColor(appearance.skin, 38);
-      context.fillRect(pose.head.x - 5, pose.head.y + 3, 2, 4);
+      context.strokeStyle = "#101827";
+      context.lineWidth = 1.25;
+      context.beginPath();
+      context.moveTo(pose.head.x - 1.5, pose.head.y - 4.8);
+      context.lineTo(pose.head.x + 2, pose.head.y - 5.4);
+      context.moveTo(pose.head.x + 4.5, pose.head.y - 5.2);
+      context.lineTo(pose.head.x + 8, pose.head.y - 4.3);
+      context.stroke();
+      if (blink) {
+        context.beginPath();
+        context.moveTo(pose.head.x - 0.5, pose.head.y - 2.3);
+        context.lineTo(pose.head.x + 2, pose.head.y - 2.3);
+        context.moveTo(pose.head.x + 5, pose.head.y - 2);
+        context.lineTo(pose.head.x + 7.5, pose.head.y - 1.8);
+        context.stroke();
+      } else {
+        context.fillStyle = "#101827";
+        context.beginPath();
+        context.ellipse(pose.head.x + 0.8, pose.head.y - 2.4, 1.25, 1.65, 0, 0, Math.PI * 2);
+        context.ellipse(pose.head.x + 6.1, pose.head.y - 2.1, 1.35, 1.75, 0, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = "#ffffff";
+        context.fillRect(pose.head.x + 6.2, pose.head.y - 2.8, 0.7, 0.7);
+      }
+      context.strokeStyle = shadeColor(appearance.skin, -28);
+      context.lineWidth = 1.05;
+      context.beginPath();
+      context.moveTo(pose.head.x + 7.3, pose.head.y + 0.2);
+      context.lineTo(pose.head.x + 9.7, pose.head.y + 1.2);
+      context.lineTo(pose.head.x + 7.2, pose.head.y + 2.2);
+      if (!appearance.faceMask) {
+        context.moveTo(pose.head.x + 2.2, pose.head.y + 6);
+        context.quadraticCurveTo(pose.head.x + 5.2, pose.head.y + 7.5, pose.head.x + 7.7, pose.head.y + 5.5);
+      }
+      context.stroke();
     }
 
-    drawCharacterAccessories(context, pose, appearance) {
-      if (appearance.wristbands) {
+    drawCharacterAccessories(context, pose, appearance, phase = "all") {
+      if ((phase === "all" || phase === "wrists") && appearance.wristbands) {
         for (const [elbow, hand] of [
           [pose.rearElbow, pose.rearHand], [pose.frontElbow, pose.frontHand],
         ]) {
@@ -2513,53 +2711,69 @@
             x: mixNumber(elbow.x, hand.x, 0.76),
             y: mixNumber(elbow.y, hand.y, 0.76),
           };
+          const angle = Math.atan2(hand.y - elbow.y, hand.x - elbow.x);
+          context.save();
+          context.translate(wrist.x, wrist.y);
+          context.rotate(angle);
           context.beginPath();
-          context.ellipse(wrist.x, wrist.y, 4.2, 2.7, 0, 0, Math.PI * 2);
+          context.ellipse(0, 0, 2.4, 4.1, 0, 0, Math.PI * 2);
           context.fillStyle = appearance.wristbandsColor;
           context.fill();
-          context.strokeStyle = "#111827";
+          context.strokeStyle = "#0b1422";
           context.lineWidth = 1.2;
           context.stroke();
+          context.restore();
         }
       }
+      if (phase === "wrists") return;
       if (appearance.hood) {
         context.strokeStyle = shadeColor(appearance.hoodColor, 30);
-        context.lineWidth = 3;
+        context.lineWidth = 2.2;
         context.beginPath();
-        context.arc(pose.head.x, pose.head.y, 12.5, Math.PI * 0.74, Math.PI * 1.88);
+        context.arc(pose.head.x, pose.head.y, 12.4, Math.PI * 0.71, Math.PI * 1.9);
         context.stroke();
       }
       if (appearance.headband) {
-        context.strokeStyle = "#111827";
-        context.lineWidth = 5;
-        context.beginPath();
-        context.moveTo(pose.head.x - 10, pose.head.y - 4);
-        context.lineTo(pose.head.x + 10, pose.head.y - 4);
-        context.stroke();
-        context.strokeStyle = appearance.headbandColor;
-        context.lineWidth = 3;
-        context.stroke();
-        context.fillStyle = appearance.headbandColor;
-        context.fillRect(pose.head.x - 15, pose.head.y - 3, 6, 3);
+        this.drawPolygon(context, [
+          { x: pose.head.x - 11, y: pose.head.y - 6 }, { x: pose.head.x + 10, y: pose.head.y - 6 },
+          { x: pose.head.x + 10, y: pose.head.y - 2.5 }, { x: pose.head.x - 11, y: pose.head.y - 2.5 },
+        ], appearance.headbandColor, "#0b1422", 1.2);
+        this.drawPolygon(context, [
+          { x: pose.head.x - 10, y: pose.head.y - 3 }, { x: pose.head.x - 18, y: pose.head.y - 1 },
+          { x: pose.head.x - 14, y: pose.head.y + 2 },
+        ], shadeColor(appearance.headbandColor, -12), "#0b1422", 1);
       }
       if (appearance.darkGlasses) {
-        context.fillStyle = appearance.darkGlassesColor;
-        context.fillRect(pose.head.x + 1, pose.head.y - 4, 7, 5);
-        context.fillRect(pose.head.x + 8, pose.head.y - 3, 5, 4);
-        context.fillRect(pose.head.x - 2, pose.head.y - 3, 4, 2);
-        context.fillStyle = shadeColor(appearance.darkGlassesColor, 75);
-        context.fillRect(pose.head.x + 3, pose.head.y - 3, 2, 1);
+        this.drawPolygon(context, [
+          { x: pose.head.x - 1.5, y: pose.head.y - 5 }, { x: pose.head.x + 3.2, y: pose.head.y - 4.8 },
+          { x: pose.head.x + 3, y: pose.head.y - 0.2 }, { x: pose.head.x - 0.8, y: pose.head.y - 0.5 },
+        ], appearance.darkGlassesColor, "#0b1422", 1);
+        this.drawPolygon(context, [
+          { x: pose.head.x + 4.2, y: pose.head.y - 4.6 }, { x: pose.head.x + 10, y: pose.head.y - 3.7 },
+          { x: pose.head.x + 8.8, y: pose.head.y + 0.2 }, { x: pose.head.x + 4.5, y: pose.head.y - 0.2 },
+        ], appearance.darkGlassesColor, "#0b1422", 1);
+        context.strokeStyle = shadeColor(appearance.darkGlassesColor, 78);
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(pose.head.x, pose.head.y - 3.8);
+        context.lineTo(pose.head.x + 2, pose.head.y - 3.6);
+        context.moveTo(pose.head.x + 5, pose.head.y - 3.5);
+        context.lineTo(pose.head.x + 7.5, pose.head.y - 3);
+        context.stroke();
       }
       if (appearance.faceMask) {
         this.drawPolygon(context, [
-          { x: pose.head.x + 1, y: pose.head.y + 1 }, { x: pose.head.x + 12, y: pose.head.y },
-          { x: pose.head.x + 9, y: pose.head.y + 8 }, { x: pose.head.x + 1, y: pose.head.y + 7 },
-        ], appearance.faceMaskColor, "#111827", 1.5);
+          { x: pose.head.x - 2, y: pose.head.y + 0.5 }, { x: pose.head.x + 10.5, y: pose.head.y - 0.2 },
+          { x: pose.head.x + 9, y: pose.head.y + 7.7 }, { x: pose.head.x + 2, y: pose.head.y + 9 },
+          { x: pose.head.x - 3, y: pose.head.y + 5 },
+        ], appearance.faceMaskColor, "#0b1422", 1.35);
         context.strokeStyle = shadeColor(appearance.faceMaskColor, 45);
         context.lineWidth = 1;
         context.beginPath();
-        context.moveTo(pose.head.x + 3, pose.head.y + 4);
-        context.lineTo(pose.head.x + 9, pose.head.y + 4);
+        context.moveTo(pose.head.x, pose.head.y + 3.3);
+        context.lineTo(pose.head.x + 8.5, pose.head.y + 2.7);
+        context.moveTo(pose.head.x + 1, pose.head.y + 6);
+        context.lineTo(pose.head.x + 7.5, pose.head.y + 5.5);
         context.stroke();
       }
     }
@@ -2673,8 +2887,8 @@
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         const help = this.mode === "local"
-          ? "P1 A/D · S · ESPACIO · E  |  P2 ←/→ · ↓ · ↑ · ENTER"
-          : "A/D MOVER · S AGACHAR · ESPACIO SALTAR · E DISPARAR";
+          ? "P1 WASD · F/E · Q · SHIFT  |  P2 FLECHAS · NUM 1/2/3/0"
+          : "WASD DIRECCIÓN · F CORTO · E LARGO · Q CUBRIR · SHIFT CORRER";
         ctx.fillText(help, WORLD.width / 2, 39);
       }
       ctx.restore();
@@ -2739,8 +2953,15 @@
       ...Object.fromEntries(Object.entries(APPEARANCE_OPTIONS).map(([key, values]) => [key, [...values]])),
       accessories: [...ACCESSORY_KEYS],
     }),
+    inputActions: () => [...INPUT_ACTIONS],
     normalizeAppearance: (appearance) => normalizeAppearance(appearance, PLAYER_APPEARANCE),
     previewStateFor,
+    renderAnimationStates: () => {
+      for (const state of PREVIEW_STATES) {
+        game.drawCharacterModel(ctx, game.player, game.player.appearance, state, 0.75);
+      }
+      return PREVIEW_STATES.length;
+    },
     renderAppearanceMatrix: () => {
       const original = game.player.appearance;
       let rendered = 0;
