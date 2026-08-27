@@ -3,103 +3,70 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="MVL Beta 0.6: arena 2D destructible, rival IA, PvP local, personalización y controles móviles. Online próximamente." />
+    <meta name="description" content="MVL Beta 1.00: nueva base del juego, reconstruida desde cero alrededor del personaje, la cámara dinámica y un combate determinista a 60 Hz." />
     <meta name="theme-color" content="#75aadb" />
-    <title>MVL — Beta 0.6</title>
+    <title>MVL — BETA 1.00</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main id="gameShell" class="game-shell" aria-label="MVL Beta 0.6">
+    <main id="gameShell" class="game-shell" aria-label="MVL BETA 1.00">
       <canvas id="game" width="1280" height="720" tabindex="0" aria-label="Arena jugable de MVL">
         Tu navegador necesita compatibilidad con Canvas 2D para ejecutar MVL.
       </canvas>
 
-      <nav class="corner-actions" aria-label="Acciones rápidas">
-        <button id="fullscreenButton" class="icon-button" type="button" aria-label="Pantalla completa" title="Pantalla completa">⛶</button>
-        <button id="settingsButton" class="icon-button" type="button" aria-label="Ajustes" title="Ajustes">⚙</button>
-      </nav>
-
-      <section id="menuLayer" class="menu-layer" aria-label="Menú de MVL">
-        <div class="menu-card" data-screen="main">
-          <p class="eyebrow">BETA 0.6</p>
-          <h1>MVL</h1>
-          <p class="tagline" data-i18n="tagline">ARENA DE BLOQUES DESTRUCTIBLES</p>
+      <section id="pauseLayer" class="pause-layer" hidden aria-label="Pausa">
+        <div class="pause-card" data-panel="pause">
+          <p class="eyebrow">MVL · BETA 1.00</p>
+          <h1>PAUSA</h1>
           <div class="menu-stack">
-            <button class="menu-button primary" type="button" data-open-screen="play" data-i18n="play">JUGAR</button>
-            <button class="menu-button" type="button" data-open-screen="character" data-i18n="character">PERSONAJE</button>
-            <button class="menu-button" type="button" data-open-screen="editor" data-i18n="editor">EDITOR DE NIVELES</button>
-            <button class="menu-button" type="button" data-open-screen="settings" data-i18n="settings">AJUSTES</button>
-          </div>
-          <p class="menu-note">ONLINE · <strong data-i18n="soon">PRÓXIMAMENTE</strong></p>
-        </div>
-
-        <div class="menu-card" data-screen="play" hidden>
-          <button class="back-button" type="button" data-open-screen="main" aria-label="Volver">←</button>
-          <p class="eyebrow" data-i18n="chooseMode">ELEGÍ UN MODO</p>
-          <h2 data-i18n="play">JUGAR</h2>
-          <div class="menu-stack">
-            <button class="menu-button primary" type="button" data-start-mode="ai" data-i18n="vsAi">VS IA</button>
-            <button class="menu-button" type="button" data-start-mode="local" data-i18n="localPvp">PVP LOCAL</button>
-            <button class="menu-button locked" type="button" disabled><span data-i18n="onlinePvp">PVP ONLINE</span><small data-i18n="stage3Soon">ETAPA 3 · PRÓXIMAMENTE</small></button>
+            <button id="continueButton" class="menu-button primary" type="button">CONTINUAR</button>
+            <button id="restartButton" class="menu-button" type="button">REINICIAR</button>
+            <button class="menu-button" type="button" data-open-panel="character">PERSONAJE</button>
+            <button class="menu-button" type="button" data-open-panel="controls">CONTROLES</button>
           </div>
         </div>
 
-        <div class="menu-card wide" data-screen="character" hidden>
-          <button class="back-button" type="button" data-open-screen="main" aria-label="Volver">←</button>
-          <p class="eyebrow" data-i18n="visualOnly">CAMBIOS SOLO VISUALES</p>
-          <h2 data-i18n="character">PERSONAJE</h2>
-          <div class="customizer-layout">
-            <canvas id="characterPreview" width="240" height="300" aria-label="Vista previa del personaje"></canvas>
-            <div class="customizer-grid">
-              <label><span data-i18n="skin">Piel</span><input type="color" data-appearance="skin" value="#e9ad76" /></label>
-              <label><span data-i18n="hair">Cabello</span><input type="color" data-appearance="hair" value="#3a2430" /></label>
-              <label><span data-i18n="top">Prenda superior</span><input type="color" data-appearance="shirt" value="#16a6a1" /></label>
-              <label><span data-i18n="bottom">Prenda inferior</span><input type="color" data-appearance="pants" value="#264f78" /></label>
-              <label><span data-i18n="shoes">Calzado</span><input type="color" data-appearance="shoes" value="#172238" /></label>
-              <label><span data-i18n="accent">Color de acento</span><input type="color" data-appearance="accent" value="#fff3a3" /></label>
-              <label class="span-two"><span data-i18n="accessory">Accesorio</span><select id="accessorySelect"><option value="none" data-i18n="none">Ninguno</option><option value="band" data-i18n="headband">Vincha</option><option value="scarf" data-i18n="scarf">Pañuelo</option><option value="visor" data-i18n="visor">Visor</option></select></label>
-            </div>
-          </div>
+        <div class="pause-card character-card" data-panel="character" hidden>
+          <button class="back-button" type="button" data-open-panel="pause" aria-label="Volver">←</button>
+          <p class="eyebrow">BASE VISUAL APROBADA</p>
+          <h2>PERSONAJE</h2>
+          <canvas id="characterPreview" width="360" height="420" aria-label="Vista previa del personaje"></canvas>
+          <dl class="character-data">
+            <div><dt>MODELO</dt><dd>Masculino</dd></div>
+            <div><dt>MUSCULATURA</dt><dd>Atlética</dd></div>
+            <div><dt>VESTIMENTA</dt><dd>Bóxer negro</dd></div>
+            <div><dt>POSE</dt><dd>Idle neutral</dd></div>
+          </dl>
+          <p class="panel-note">Primero aprobamos el cuerpo en movimiento. La personalización se incorpora después, sin alterar la hitbox.</p>
         </div>
 
-        <div class="menu-card wide" data-screen="settings" hidden>
-          <button class="back-button" type="button" data-close-settings aria-label="Volver">←</button>
-          <p class="eyebrow" data-i18n="pauseWhenMatch">LA PARTIDA SE PAUSA</p>
-          <h2 data-i18n="settings">AJUSTES</h2>
-          <div class="settings-grid">
-            <label><span data-i18n="language">Idioma</span><select id="languageSelect"><option value="es">Español</option><option value="en">English</option></select></label>
-            <label><span data-i18n="fps">FPS visuales</span><select id="fpsSelect"><option value="60">60 FPS</option><option value="120">120 FPS</option></select></label>
-            <label><span data-i18n="touchOpacity">Opacidad controles táctiles</span><select id="touchOpacitySelect"><option value="0" data-i18n="hidden">Ocultos · no funcionan</option><option value="0.1">10%</option><option value="0.25">25%</option><option value="0.5">50%</option></select></label>
-            <label><span data-i18n="controlPreset">Controles de teclado</span><select id="controlPresetSelect"><option value="classic" data-i18n="classic">Clásicos</option><option value="alternate" data-i18n="alternate">Alternativos</option></select></label>
-            <label class="toggle-row"><span data-i18n="sound">Sonido</span><input id="soundToggle" type="checkbox" checked /></label>
-            <label class="toggle-row"><span data-i18n="music">Música</span><input id="musicToggle" type="checkbox" /></label>
-          </div>
-          <div id="controlLegend" class="control-legend"></div>
-        </div>
-
-        <div class="menu-card editor-card" data-screen="editor" hidden>
-          <button class="back-button" type="button" data-open-screen="main" aria-label="Volver">←</button>
-          <p class="eyebrow" data-i18n="gridTypesOnly">LA GRILLA SOLO GUARDA EL TIPO</p>
-          <h2 data-i18n="editor">EDITOR DE NIVELES</h2>
-          <div class="editor-toolbar" role="toolbar" aria-label="Tipos de bloque">
-            <button type="button" class="tool-button selected" data-editor-tool="F" data-i18n="floatingBrick">LADRILLO FLOTANTE</button>
-            <button type="button" class="tool-button" data-editor-tool="G" data-i18n="groundBrick">LADRILLO DE SUELO</button>
-            <button type="button" class="tool-button" data-editor-tool=" " data-i18n="eraser">BORRADOR</button>
-            <button type="button" class="tool-button accent" id="testLevelButton" data-i18n="testLevel">PROBAR NIVEL</button>
-            <button type="button" class="tool-button" id="resetLevelButton" data-i18n="resetLevel">RESTAURAR</button>
-          </div>
-          <div id="levelGrid" class="level-grid" role="grid" aria-label="Cuadrícula de 32 por 18"></div>
+        <div class="pause-card controls-card" data-panel="controls" hidden>
+          <button class="back-button" type="button" data-open-panel="pause" aria-label="Volver">←</button>
+          <p class="eyebrow">2³ = 8 ACCIONES</p>
+          <h2>CONTROLES</h2>
+          <div id="controlList" class="control-list"></div>
+          <p class="panel-note">Joystick: stick/cruceta · ✕ salto · □ corto · ○ largo · L1 cobertura · R1 correr.</p>
+          <p id="gamepadStatus" class="gamepad-status">JOYSTICK NO DETECTADO</p>
         </div>
       </section>
 
       <div id="touchControls" class="touch-controls" aria-label="Controles táctiles">
-        <div id="touchPad" class="touch-pad" aria-label="Gamepad: izquierda, derecha, salto arriba y agacharse abajo"><span class="pad-arrow up">▲</span><span class="pad-arrow left">◀</span><span class="pad-arrow right">▶</span><span class="pad-arrow down">▼</span><span id="touchStick" class="touch-stick"></span></div>
-        <div class="touch-actions"><button id="touchJump" class="touch-action" type="button" aria-label="Saltar">A<small data-i18n="jump">SALTO</small></button><button id="touchFire" class="touch-action fire" type="button" aria-label="Disparar">B<small data-i18n="fire">FUEGO</small></button></div>
+        <div class="touch-dpad" aria-label="Direcciones">
+          <button type="button" data-touch-action="up" aria-label="Saltar">▲</button>
+          <button type="button" data-touch-action="left" aria-label="Izquierda">◀</button>
+          <button type="button" data-touch-action="down" aria-label="Agacharse">▼</button>
+          <button type="button" data-touch-action="right" aria-label="Derecha">▶</button>
+        </div>
+        <div class="touch-actions" aria-label="Acciones">
+          <button type="button" data-touch-action="guard">G<small>CUBRIR</small></button>
+          <button type="button" data-touch-action="run">R<small>CORRER</small></button>
+          <button type="button" data-touch-action="melee">A<small>CORTO</small></button>
+          <button type="button" data-touch-action="ranged">B<small>LARGO</small></button>
+        </div>
       </div>
 
-      <p id="loadingMessage" class="loading-message">Cargando MVL Beta 0.6…</p>
-      <button id="restartButton" class="restart-button" type="button" hidden data-i18n="rematch">REVANCHA</button>
-      <button id="menuButton" class="menu-return-button" type="button" hidden data-i18n="mainMenu">MENÚ</button>
+      <p id="loadingMessage" class="loading-message">Preparando MVL BETA 1.00…</p>
+      <p id="toast" class="toast" aria-live="polite"></p>
       <p id="gameStatus" class="sr-only" aria-live="polite"></p>
     </main>
     <script src="game.js"></script>

@@ -1,31 +1,25 @@
-# MVL — Beta 0.9
+# MVL — BETA 1.00
 
-Arena web 2D competitiva y destructible construida sin frameworks con HTML, CSS, JavaScript y Canvas 2D.
+Reconstrucción limpia del prototipo MVL. La Beta 0.9 permanece preservada en el historial; esta versión conserva únicamente la definición del escenario y vuelve a construir personaje, cámara, controles, combate y audio.
 
-La Beta 0.9 convierte la base articulada en un sistema de luchadores modulares: postura de combate, anatomía con volumen, animaciones renovadas, personalización persistente y ocho acciones de entrada. Conserva el combate VS IA, PvP local, editor, ajustes ES/EN, audio sintetizado, render 60/120 FPS y controles móviles. El PvP online queda señalado como **Etapa 3 · Próximamente**.
-
-La documentación funcional completa está en [`worker/source/README.md`](worker/source/README.md).
+La documentación funcional está en [`worker/source/README.md`](worker/source/README.md).
 
 ## Desarrollo
 
-Los archivos fuente públicos son:
+Fuente pública:
 
 - `worker/source/index.html`
 - `worker/source/style.css`
 - `worker/source/game.js`
+- `worker/source/assets/fighter-idle.png`
 
-Para regenerar el Worker autocontenido:
+Regenerar y comprobar el Worker:
 
 ```bash
 node scripts/embed-source.mjs
-```
-
-Pruebas y validación:
-
-```bash
 node tests/headless.cjs
 npm run build
 npm run validate
 ```
 
-La simulación física usa un paso fijo de 120 Hz. El ajuste de 60/120 FPS solo controla el render, por lo que no altera la velocidad de nubes, personajes o proyectiles.
+La partida avanza a 60 pasos lógicos por segundo. La presentación puede dibujarse a 60 o 120 FPS sin modificar el resultado del combate, base necesaria para el futuro PvP online.
