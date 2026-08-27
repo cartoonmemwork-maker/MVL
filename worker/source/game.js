@@ -12,6 +12,8 @@
   const fullscreenButton = document.querySelector("#fullscreenButton");
   const settingsButton = document.querySelector("#settingsButton");
   const characterPreview = document.querySelector("#characterPreview");
+  const previewModeSelect = document.querySelector("#previewModeSelect");
+  const previewStateLabel = document.querySelector("#previewStateLabel");
   const levelGridElement = document.querySelector("#levelGrid");
   const touchPad = document.querySelector("#touchPad");
   const touchStick = document.querySelector("#touchStick");
@@ -125,6 +127,16 @@
     "darkGlasses", "headband", "wristbands", "faceMask", "hood", "belt", "vest",
   ]);
 
+  const PREVIEW_STATES = Object.freeze([
+    "idle", "run", "skid", "jump", "fall", "crouch", "fire", "hurt", "stomp",
+  ]);
+
+  const PREVIEW_STATE_KEYS = Object.freeze({
+    idle: "animIdle", run: "animRun", skid: "animSkid", jump: "animJump",
+    fall: "animFall", crouch: "animCrouch", fire: "animFire", hurt: "animHurt",
+    stomp: "animStomp",
+  });
+
   // El futuro editor solo elige un tipo por celda. HP y dimensiones son del motor.
   const TILE_TYPES = Object.freeze({
     floatingBrick: Object.freeze({ symbol: "F", maxHp: 3, breakFromBelow: true }),
@@ -180,10 +192,10 @@
 
   const I18N = Object.freeze({
     es: Object.freeze({
-      tagline: "ARENA DE BLOQUES DESTRUCTIBLES", play: "JUGAR", character: "PERSONAJE", editor: "EDITOR DE NIVELES", settings: "AJUSTES", soon: "PRÓXIMAMENTE", chooseMode: "ELEGÍ UN MODO", vsAi: "VS IA", localPvp: "PVP LOCAL", onlinePvp: "PVP ONLINE", stage3Soon: "ETAPA 3 · PRÓXIMAMENTE", visualOnly: "CAMBIOS SOLO VISUALES", identity: "Identidad", sex: "Sexo", male: "Hombre", female: "Mujer", skin: "Piel", hair: "Cabello", hairStyle: "Tipo de pelo", shortHair: "Corto", longHair: "Largo", bald: "Pelado", clothes: "Ropa", topStyle: "Torso", shortSleeve: "Manga corta", longSleeve: "Manga larga", noTop: "Sin camiseta", topColor: "Color del torso", bottomStyle: "Piernas", shorts: "Pantalón corto", longPants: "Pantalón largo", noPants: "Sin pantalones", bottomColor: "Color de piernas", footwearStyle: "Calzado", sneakers: "Zapatillas", dressShoes: "Zapatos", barefoot: "Descalzo", footwearColor: "Color del calzado", accessories: "Accesorios", darkGlasses: "Gafas oscuras", headband: "Vincha", wristbands: "Muñequeras", faceMask: "Barbijo", hood: "Capucha", belt: "Cinturón", vest: "Chaleco", pauseWhenMatch: "LA PARTIDA SE PAUSA", language: "Idioma", fps: "FPS visuales", touchOpacity: "Opacidad controles táctiles", hidden: "Ocultos · no funcionan", controlPreset: "Controles de teclado", classic: "Clásicos", alternate: "Alternativos", sound: "Sonido", music: "Música", gridTypesOnly: "LA GRILLA SOLO GUARDA EL TIPO", floatingBrick: "LADRILLO FLOTANTE", groundBrick: "LADRILLO DE SUELO", eraser: "BORRADOR", testLevel: "PROBAR NIVEL", resetLevel: "RESTAURAR", jump: "SALTO", fire: "FUEGO", rematch: "REVANCHA", mainMenu: "MENÚ",
+      tagline: "ARENA DE BLOQUES DESTRUCTIBLES", play: "JUGAR", character: "PERSONAJE", editor: "EDITOR DE NIVELES", settings: "AJUSTES", soon: "PRÓXIMAMENTE", chooseMode: "ELEGÍ UN MODO", vsAi: "VS IA", localPvp: "PVP LOCAL", onlinePvp: "PVP ONLINE", stage3Soon: "ETAPA 3 · PRÓXIMAMENTE", visualOnly: "CAMBIOS SOLO VISUALES", identity: "Identidad", sex: "Sexo", male: "Hombre", female: "Mujer", skin: "Piel", hair: "Cabello", hairStyle: "Tipo de pelo", shortHair: "Corto", longHair: "Largo", bald: "Pelado", clothes: "Ropa", topStyle: "Torso", shortSleeve: "Manga corta", longSleeve: "Manga larga", noTop: "Sin camiseta", topColor: "Color del torso", bottomStyle: "Piernas", shorts: "Pantalón corto", longPants: "Pantalón largo", noPants: "Sin pantalones", bottomColor: "Color de piernas", footwearStyle: "Calzado", sneakers: "Zapatillas", dressShoes: "Zapatos", barefoot: "Descalzo", footwearColor: "Color del calzado", accessories: "Accesorios", darkGlasses: "Gafas oscuras", headband: "Vincha", wristbands: "Muñequeras", faceMask: "Barbijo", hood: "Capucha", belt: "Cinturón", vest: "Chaleco", previewMode: "Vista previa", previewIdle: "Idle", previewDemo: "Demostración", previewHint: "IDLE FIJO · DEMO: 3 SEGUNDOS POR ANIMACIÓN", animIdle: "IDLE", animRun: "CORRER", animSkid: "DETENERSE", animJump: "SALTAR", animFall: "CAER", animCrouch: "AGACHARSE", animFire: "DISPARAR", animHurt: "RECIBIR DAÑO", animStomp: "PISOTÓN", pauseWhenMatch: "LA PARTIDA SE PAUSA", language: "Idioma", fps: "FPS visuales", touchOpacity: "Opacidad controles táctiles", hidden: "Ocultos · no funcionan", controlPreset: "Controles de teclado", classic: "Clásicos", alternate: "Alternativos", sound: "Sonido", music: "Música", gridTypesOnly: "LA GRILLA SOLO GUARDA EL TIPO", floatingBrick: "LADRILLO FLOTANTE", groundBrick: "LADRILLO DE SUELO", eraser: "BORRADOR", testLevel: "PROBAR NIVEL", resetLevel: "RESTAURAR", jump: "SALTO", fire: "FUEGO", rematch: "REVANCHA", mainMenu: "MENÚ",
     }),
     en: Object.freeze({
-      tagline: "DESTRUCTIBLE BLOCK ARENA", play: "PLAY", character: "CHARACTER", editor: "LEVEL EDITOR", settings: "SETTINGS", soon: "COMING SOON", chooseMode: "CHOOSE A MODE", vsAi: "VS AI", localPvp: "LOCAL PVP", onlinePvp: "ONLINE PVP", stage3Soon: "STAGE 3 · COMING SOON", visualOnly: "VISUAL CHANGES ONLY", identity: "Identity", sex: "Sex", male: "Male", female: "Female", skin: "Skin", hair: "Hair", hairStyle: "Hair type", shortHair: "Short", longHair: "Long", bald: "Bald", clothes: "Clothes", topStyle: "Torso", shortSleeve: "Short sleeves", longSleeve: "Long sleeves", noTop: "No shirt", topColor: "Torso color", bottomStyle: "Legs", shorts: "Shorts", longPants: "Long pants", noPants: "No pants", bottomColor: "Leg color", footwearStyle: "Footwear", sneakers: "Sneakers", dressShoes: "Shoes", barefoot: "Barefoot", footwearColor: "Footwear color", accessories: "Accessories", darkGlasses: "Dark glasses", headband: "Headband", wristbands: "Wristbands", faceMask: "Face mask", hood: "Hood", belt: "Belt", vest: "Vest", pauseWhenMatch: "THE MATCH IS PAUSED", language: "Language", fps: "Visual FPS", touchOpacity: "Touch controls opacity", hidden: "Hidden · disabled", controlPreset: "Keyboard controls", classic: "Classic", alternate: "Alternate", sound: "Sound", music: "Music", gridTypesOnly: "THE GRID ONLY STORES TILE TYPE", floatingBrick: "FLOATING BRICK", groundBrick: "GROUND BRICK", eraser: "ERASER", testLevel: "TEST LEVEL", resetLevel: "RESET", jump: "JUMP", fire: "FIRE", rematch: "REMATCH", mainMenu: "MENU",
+      tagline: "DESTRUCTIBLE BLOCK ARENA", play: "PLAY", character: "CHARACTER", editor: "LEVEL EDITOR", settings: "SETTINGS", soon: "COMING SOON", chooseMode: "CHOOSE A MODE", vsAi: "VS AI", localPvp: "LOCAL PVP", onlinePvp: "ONLINE PVP", stage3Soon: "STAGE 3 · COMING SOON", visualOnly: "VISUAL CHANGES ONLY", identity: "Identity", sex: "Sex", male: "Male", female: "Female", skin: "Skin", hair: "Hair", hairStyle: "Hair type", shortHair: "Short", longHair: "Long", bald: "Bald", clothes: "Clothes", topStyle: "Torso", shortSleeve: "Short sleeves", longSleeve: "Long sleeves", noTop: "No shirt", topColor: "Torso color", bottomStyle: "Legs", shorts: "Shorts", longPants: "Long pants", noPants: "No pants", bottomColor: "Leg color", footwearStyle: "Footwear", sneakers: "Sneakers", dressShoes: "Shoes", barefoot: "Barefoot", footwearColor: "Footwear color", accessories: "Accessories", darkGlasses: "Dark glasses", headband: "Headband", wristbands: "Wristbands", faceMask: "Face mask", hood: "Hood", belt: "Belt", vest: "Vest", previewMode: "Preview", previewIdle: "Idle", previewDemo: "Demo", previewHint: "FIXED IDLE · DEMO: 3 SECONDS PER ANIMATION", animIdle: "IDLE", animRun: "RUN", animSkid: "STOP", animJump: "JUMP", animFall: "FALL", animCrouch: "CROUCH", animFire: "FIRE", animHurt: "TAKE DAMAGE", animStomp: "STOMP", pauseWhenMatch: "THE MATCH IS PAUSED", language: "Language", fps: "Visual FPS", touchOpacity: "Touch controls opacity", hidden: "Hidden · disabled", controlPreset: "Keyboard controls", classic: "Classic", alternate: "Alternate", sound: "Sound", music: "Music", gridTypesOnly: "THE GRID ONLY STORES TILE TYPE", floatingBrick: "FLOATING BRICK", groundBrick: "GROUND BRICK", eraser: "ERASER", testLevel: "TEST LEVEL", resetLevel: "RESET", jump: "JUMP", fire: "FIRE", rematch: "REMATCH", mainMenu: "MENU",
     }),
   });
 
@@ -206,8 +218,16 @@
       if (!values.includes(merged[key])) merged[key] = fallback[key];
     }
     for (const key of ACCESSORY_KEYS) merged[key] = Boolean(merged[key]);
-    if (appearance?.accessory === "band") merged.headband = true;
-    if (appearance?.accessory === "visor") merged.darkGlasses = true;
+    if (!Object.prototype.hasOwnProperty.call(appearance || {}, "headband") && appearance?.accessory === "band") {
+      merged.headband = true;
+    }
+    if (!Object.prototype.hasOwnProperty.call(appearance || {}, "darkGlasses") && appearance?.accessory === "visor") {
+      merged.darkGlasses = true;
+    }
+    delete merged.accessory;
+    delete merged.accent;
+    delete merged.skinLight;
+    delete merged.shirtLight;
     return merged;
   };
   const shadeColor = (color, amount) => {
@@ -221,6 +241,9 @@
     return `rgb(${channel(16)}, ${channel(8)}, ${channel(0)})`;
   };
   const mixNumber = (from, to, ratio) => from + (to - from) * ratio;
+  const previewStateFor = (mode, elapsedSeconds) => mode === "demo"
+    ? PREVIEW_STATES[Math.floor(Math.max(0, elapsedSeconds) / 3) % PREVIEW_STATES.length]
+    : "idle";
   const readStoredJson = (key, fallback) => {
     try {
       const value = window.localStorage?.getItem(key);
@@ -1082,6 +1105,8 @@
       this.resumeState = null;
       this.mode = "solo";
       this.activeScreen = "main";
+      this.previewMode = "idle";
+      this.previewDemoStartedAt = 0;
       this.renderFps = 60;
       this.applySettings();
       this.reset();
@@ -1218,7 +1243,12 @@
       menuLayer.querySelectorAll("[data-screen]").forEach((screen) => {
         screen.hidden = screen.dataset.screen !== name;
       });
-      if (name === "character") this.drawCharacterPreview();
+      if (name === "character") {
+        this.previewMode = "idle";
+        this.previewDemoStartedAt = performance.now();
+        if (previewModeSelect) previewModeSelect.value = "idle";
+        this.drawCharacterPreview();
+      }
       if (name === "editor") this.buildEditorGrid();
       this.input.clear();
     }
@@ -1275,6 +1305,15 @@
       bindSetting("#soundToggle", "sound");
       bindSetting("#musicToggle", "music");
 
+      if (previewModeSelect) {
+        previewModeSelect.value = "idle";
+        previewModeSelect.addEventListener("change", () => {
+          this.previewMode = previewModeSelect.value === "demo" ? "demo" : "idle";
+          this.previewDemoStartedAt = performance.now();
+          this.drawCharacterPreview();
+        });
+      }
+
       document.querySelectorAll?.("[data-appearance]").forEach((input) => {
         const key = input.dataset.appearance;
         if (input.type === "checkbox") input.checked = Boolean(this.playerAppearance[key]);
@@ -1309,8 +1348,8 @@
       if (!characterPreview) return;
       const preview = characterPreview.getContext("2d");
       const seconds = performance.now() / 1000;
-      const states = ["idle", "run", "skid", "jump", "fall", "crouch", "fire", "hurt", "stomp"];
-      const state = states[Math.floor(seconds / 1.35) % states.length];
+      const demoElapsed = Math.max(0, (performance.now() - this.previewDemoStartedAt) / 1000);
+      const state = previewStateFor(this.previewMode, demoElapsed);
       const compact = state === "crouch" || state === "stomp";
       const previewActor = {
         height: compact ? ACTOR_TUNING.crouchingHeight : ACTOR_TUNING.standingHeight,
@@ -1323,19 +1362,28 @@
       };
       preview.imageSmoothingEnabled = true;
       preview.clearRect(0, 0, characterPreview.width, characterPreview.height);
-      preview.fillStyle = "#75aadb";
+      preview.fillStyle = "#9ac5db";
       preview.fillRect(0, 0, characterPreview.width, characterPreview.height);
-      preview.fillStyle = "rgba(255,255,255,.22)";
-      preview.fillRect(0, 276, characterPreview.width, 3);
-      preview.fillStyle = "#d65b2f";
-      preview.fillRect(0, 279, characterPreview.width, 81);
-      preview.fillStyle = "#f3a33e";
-      preview.fillRect(0, 279, characterPreview.width, 6);
+      preview.fillStyle = "rgba(255,255,255,.16)";
+      preview.fillRect(38, 0, 2, 276);
+      preview.fillRect(280, 0, 2, 276);
+      preview.fillStyle = "#26394d";
+      preview.fillRect(0, 278, characterPreview.width, 82);
+      preview.fillStyle = "#3e5870";
+      preview.fillRect(0, 278, characterPreview.width, 5);
+      preview.fillStyle = "rgba(12,24,37,.22)";
+      preview.beginPath();
+      preview.ellipse(160, 279, compact ? 34 : 47, 9, 0, 0, Math.PI * 2);
+      preview.fill();
       preview.save();
-      preview.translate(156, 24 + (ACTOR_TUNING.standingHeight - previewActor.height) * 3.15);
-      preview.scale(3.15, 3.15);
+      preview.translate(154, 18 + (ACTOR_TUNING.standingHeight - previewActor.height) * 3.22);
+      preview.scale(3.22, 3.22);
       this.drawCharacterModel(preview, previewActor, this.playerAppearance, state, seconds);
       preview.restore();
+      if (previewStateLabel) {
+        const dictionary = I18N[this.settings.language] || I18N.es;
+        previewStateLabel.textContent = dictionary[PREVIEW_STATE_KEYS[state]] || state.toUpperCase();
+      }
     }
 
     buildEditorGrid() {
@@ -2190,6 +2238,21 @@
       context.stroke();
     }
 
+    drawJointedPath(context, points, width, color, outline = "#111827") {
+      context.beginPath();
+      context.moveTo(points[0].x, points[0].y);
+      for (const point of points.slice(1)) context.lineTo(point.x, point.y);
+      context.strokeStyle = outline;
+      context.lineWidth = width + 3;
+      context.stroke();
+      context.beginPath();
+      context.moveTo(points[0].x, points[0].y);
+      for (const point of points.slice(1)) context.lineTo(point.x, point.y);
+      context.strokeStyle = color;
+      context.lineWidth = width;
+      context.stroke();
+    }
+
     drawPolygon(context, points, fill, outline = "#111827", width = 2) {
       context.beginPath();
       context.moveTo(points[0].x, points[0].y);
@@ -2207,18 +2270,26 @@
     drawLeg(context, hip, knee, foot, appearance, front) {
       const side = front ? 2.4 : -2.4;
       const upperStart = { x: hip.x + side, y: hip.y - 1 };
+      const ankle = { x: foot.x, y: foot.y - 4 };
       const skinShadow = shadeColor(appearance.skin, -22);
+      const skin = front ? appearance.skin : skinShadow;
       if (appearance.bottomStyle === "longPants") {
-        this.drawSegment(context, upperStart, knee, 8.5, appearance.pants);
-        this.drawSegment(context, knee, { x: foot.x, y: foot.y - 4 }, 7.5, shadeColor(appearance.pants, front ? 10 : -18));
+        const cloth = shadeColor(appearance.pants, front ? 8 : -18);
+        this.drawJointedPath(context, [upperStart, knee, ankle], 8, cloth);
+        context.strokeStyle = shadeColor(cloth, 35);
+        context.lineWidth = 1.2;
+        context.beginPath();
+        context.moveTo(knee.x + (front ? 2 : -2), knee.y - 2);
+        context.lineTo(ankle.x + (front ? 2 : -2), ankle.y - 1);
+        context.stroke();
       } else if (appearance.bottomStyle === "shorts") {
         const thigh = { x: mixNumber(upperStart.x, knee.x, 0.58), y: mixNumber(upperStart.y, knee.y, 0.58) };
-        this.drawSegment(context, upperStart, thigh, 9.5, appearance.pants);
-        this.drawSegment(context, thigh, knee, 6.5, front ? appearance.skin : skinShadow);
-        this.drawSegment(context, knee, { x: foot.x, y: foot.y - 3 }, 6, front ? appearance.skin : skinShadow);
+        this.drawJointedPath(context, [upperStart, knee, ankle], 6.5, skin);
+        this.drawSegment(context, upperStart, thigh, 9.5, shadeColor(appearance.pants, front ? 6 : -16));
+        context.fillStyle = shadeColor(appearance.pants, -28);
+        context.fillRect(thigh.x - 4, thigh.y - 1, 8, 2);
       } else {
-        this.drawSegment(context, upperStart, knee, 7, front ? appearance.skin : skinShadow);
-        this.drawSegment(context, knee, { x: foot.x, y: foot.y - 3 }, 6, front ? appearance.skin : skinShadow);
+        this.drawJointedPath(context, [upperStart, knee, ankle], 6.5, skin);
       }
       this.drawFoot(context, foot, appearance, front);
     }
@@ -2255,22 +2326,28 @@
 
     drawArm(context, shoulder, elbow, hand, appearance, front) {
       const skin = front ? appearance.skin : shadeColor(appearance.skin, -20);
+      const wrist = { x: mixNumber(elbow.x, hand.x, 0.82), y: mixNumber(elbow.y, hand.y, 0.82) };
+      this.drawJointedPath(context, [shoulder, elbow, wrist], 6.5, skin);
       if (appearance.topStyle === "longSleeve") {
-        this.drawSegment(context, shoulder, elbow, 7.5, appearance.shirt);
-        this.drawSegment(context, elbow, { x: hand.x, y: hand.y - 1 }, 6.5, shadeColor(appearance.shirt, front ? 12 : -18));
-      } else {
-        this.drawSegment(context, shoulder, elbow, 7, skin);
-        this.drawSegment(context, elbow, { x: hand.x, y: hand.y - 1 }, 6, skin);
-        if (appearance.topStyle === "shortSleeve") {
-          const sleeveEnd = {
-            x: mixNumber(shoulder.x, elbow.x, 0.43),
-            y: mixNumber(shoulder.y, elbow.y, 0.43),
-          };
-          this.drawSegment(context, shoulder, sleeveEnd, 9, appearance.shirt);
-        }
+        this.drawJointedPath(
+          context,
+          [shoulder, elbow, wrist],
+          7.5,
+          shadeColor(appearance.shirt, front ? 8 : -16),
+        );
+        context.fillStyle = shadeColor(appearance.shirt, 35);
+        context.fillRect(wrist.x - 3, wrist.y - 2, 6, 2);
+      } else if (appearance.topStyle === "shortSleeve") {
+        const sleeveEnd = {
+          x: mixNumber(shoulder.x, elbow.x, 0.45),
+          y: mixNumber(shoulder.y, elbow.y, 0.45),
+        };
+        this.drawSegment(context, shoulder, sleeveEnd, 9, shadeColor(appearance.shirt, front ? 6 : -15));
+        context.fillStyle = shadeColor(appearance.shirt, -24);
+        context.fillRect(sleeveEnd.x - 3.5, sleeveEnd.y - 1, 7, 2);
       }
       context.beginPath();
-      context.ellipse(hand.x, hand.y, 4.3, 4.8, 0, 0, Math.PI * 2);
+      context.ellipse(hand.x, hand.y, 4.1, 4.5, 0, 0, Math.PI * 2);
       context.fillStyle = skin;
       context.fill();
       context.strokeStyle = "#111827";
@@ -2291,8 +2368,20 @@
       ];
       const torsoColor = appearance.topStyle === "noTop" ? appearance.skin : appearance.shirt;
       this.drawPolygon(context, torso, torsoColor);
-      context.fillStyle = shadeColor(torsoColor, 28);
-      context.fillRect(pose.neck.x - 4, pose.neck.y + 2, 7, 2);
+      context.fillStyle = shadeColor(torsoColor, 26);
+      context.fillRect(pose.neck.x - 3, pose.neck.y + 2, 7, 2);
+      context.fillRect(pose.frontShoulder.x + 1, pose.frontShoulder.y + 4, 2, 11);
+
+      if (appearance.topStyle !== "noTop") {
+        context.strokeStyle = shadeColor(appearance.shirt, -35);
+        context.lineWidth = 1.3;
+        context.beginPath();
+        context.arc(pose.neck.x, pose.neck.y + 1, 5, 0.18, Math.PI - 0.18);
+        context.stroke();
+      } else if (!female) {
+        context.fillStyle = shadeColor(appearance.skin, -24);
+        context.fillRect(pose.neck.x - 5, pose.neck.y + 8, 10, 1.4);
+      }
 
       if (female && appearance.topStyle === "noTop") {
         context.fillStyle = "#111318";
@@ -2308,16 +2397,15 @@
             { x: pose.hip.x + 5, y: pose.hip.y + 5 }, { x: pose.hip.x - 5, y: pose.hip.y + 5 },
           ], "#101318");
         } else {
-          context.fillStyle = "#f7f7f2";
+          context.fillStyle = "#101318";
           context.fillRect(pose.hip.x - 10, pose.hip.y - 5, 20, 11);
           context.strokeStyle = "#111827";
           context.lineWidth = 2;
           context.strokeRect(pose.hip.x - 10, pose.hip.y - 5, 20, 11);
-          context.fillStyle = "#e9424d";
-          context.fillRect(pose.hip.x - 6, pose.hip.y - 1, 2, 2);
-          context.fillRect(pose.hip.x + 4, pose.hip.y + 1, 2, 2);
-          context.fillRect(pose.hip.x - 5, pose.hip.y + 1, 1, 1);
-          context.fillRect(pose.hip.x + 5, pose.hip.y + 3, 1, 1);
+          context.fillStyle = "#f2f4f7";
+          context.fillRect(pose.hip.x - 9, pose.hip.y - 4, 18, 2);
+          context.fillStyle = "#323842";
+          context.fillRect(pose.hip.x - 1, pose.hip.y - 2, 2, 7);
         }
       } else {
         context.fillStyle = shadeColor(appearance.pants, -18);
@@ -2326,8 +2414,16 @@
 
       if (appearance.vest) {
         const vestColor = appearance.vestColor;
-        this.drawPolygon(context, [torso[0], torso[1], torso[2], { x: pose.hip.x + 2, y: pose.hip.y - 2 }, { x: pose.neck.x + 2, y: pose.neck.y + 4 }], vestColor);
-        this.drawPolygon(context, [torso[0], { x: pose.neck.x - 2, y: pose.neck.y + 4 }, { x: pose.hip.x - 2, y: pose.hip.y - 2 }, torso[3], torso[4]], shadeColor(vestColor, -13));
+        this.drawPolygon(context, [
+          { x: pose.neck.x + 2, y: pose.neck.y + 4 }, torso[1], torso[2],
+          { x: pose.hip.x + 3, y: pose.hip.y - 1 },
+        ], vestColor, "#111827", 1.4);
+        this.drawPolygon(context, [
+          torso[4], { x: pose.neck.x - 2, y: pose.neck.y + 4 },
+          { x: pose.hip.x - 3, y: pose.hip.y - 1 }, torso[3],
+        ], shadeColor(vestColor, -12), "#111827", 1.4);
+        context.fillStyle = shadeColor(vestColor, 45);
+        context.fillRect(pose.hip.x + 5, pose.neck.y + 12, 2, 7);
       }
 
       if (appearance.belt) {
@@ -2355,7 +2451,7 @@
         context.lineWidth = 2;
         context.stroke();
       }
-      if (appearance.hairStyle !== "long") return;
+      if (appearance.hood || appearance.hairStyle !== "long") return;
       this.drawPolygon(context, [
         { x: pose.head.x - 11, y: pose.head.y - 7 }, { x: pose.head.x + 8, y: pose.head.y - 6 },
         { x: pose.head.x + 10, y: pose.head.y + 20 }, { x: pose.neck.x + 8, y: pose.neck.y + 12 },
@@ -2375,14 +2471,14 @@
       context.fillStyle = shadeColor(appearance.skin, 32);
       context.fillRect(pose.head.x + 3, pose.head.y - 6, 4, 2);
 
-      if (appearance.hairStyle === "short") {
+      if (appearance.hairStyle === "short" && !appearance.hood) {
         this.drawPolygon(context, [
           { x: pose.head.x - 10, y: pose.head.y - 4 }, { x: pose.head.x - 7, y: pose.head.y - 11 },
           { x: pose.head.x - 2, y: pose.head.y - 9 }, { x: pose.head.x + 1, y: pose.head.y - 13 },
           { x: pose.head.x + 5, y: pose.head.y - 9 }, { x: pose.head.x + 10, y: pose.head.y - 7 },
           { x: pose.head.x + 8, y: pose.head.y - 2 }, { x: pose.head.x - 9, y: pose.head.y + 1 },
         ], appearance.hair);
-      } else if (appearance.hairStyle === "long") {
+      } else if (appearance.hairStyle === "long" && !appearance.hood) {
         this.drawPolygon(context, [
           { x: pose.head.x - 10, y: pose.head.y - 4 }, { x: pose.head.x - 7, y: pose.head.y - 11 },
           { x: pose.head.x + 1, y: pose.head.y - 12 }, { x: pose.head.x + 10, y: pose.head.y - 6 },
@@ -2390,6 +2486,12 @@
         ], appearance.hair);
         context.fillStyle = appearance.hair;
         context.fillRect(pose.head.x - 11, pose.head.y - 2, 4, 13);
+      } else if (appearance.hood && appearance.hairStyle !== "bald") {
+        this.drawPolygon(context, [
+          { x: pose.head.x - 5, y: pose.head.y - 9 }, { x: pose.head.x + 4, y: pose.head.y - 10 },
+          { x: pose.head.x + 8, y: pose.head.y - 5 }, { x: pose.head.x + 2, y: pose.head.y - 6 },
+          { x: pose.head.x - 3, y: pose.head.y - 3 },
+        ], appearance.hair, null, 0);
       }
 
       const blink = state === "hurt" || Math.sin(time * 2.1) > 0.985;
@@ -2398,13 +2500,26 @@
       context.fillRect(pose.head.x + 8, pose.head.y + 4, 3.5, 1.5);
       context.fillStyle = shadeColor(appearance.skin, -18);
       context.fillRect(pose.head.x + 9, pose.head.y, 4, 3);
+      context.fillStyle = shadeColor(appearance.skin, 38);
+      context.fillRect(pose.head.x - 5, pose.head.y + 3, 2, 4);
     }
 
     drawCharacterAccessories(context, pose, appearance) {
       if (appearance.wristbands) {
-        for (const hand of [pose.rearHand, pose.frontHand]) {
+        for (const [elbow, hand] of [
+          [pose.rearElbow, pose.rearHand], [pose.frontElbow, pose.frontHand],
+        ]) {
+          const wrist = {
+            x: mixNumber(elbow.x, hand.x, 0.76),
+            y: mixNumber(elbow.y, hand.y, 0.76),
+          };
+          context.beginPath();
+          context.ellipse(wrist.x, wrist.y, 4.2, 2.7, 0, 0, Math.PI * 2);
           context.fillStyle = appearance.wristbandsColor;
-          context.fillRect(hand.x - 4, hand.y - 6, 8, 3);
+          context.fill();
+          context.strokeStyle = "#111827";
+          context.lineWidth = 1.2;
+          context.stroke();
         }
       }
       if (appearance.hood) {
@@ -2625,6 +2740,7 @@
       accessories: [...ACCESSORY_KEYS],
     }),
     normalizeAppearance: (appearance) => normalizeAppearance(appearance, PLAYER_APPEARANCE),
+    previewStateFor,
     renderAppearanceMatrix: () => {
       const original = game.player.appearance;
       let rendered = 0;

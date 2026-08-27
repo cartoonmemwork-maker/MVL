@@ -1,4 +1,4 @@
-# MVL — Beta 0.6
+# MVL — Beta 0.8
 
 Segunda etapa jugable de MVL: una arena web 2D competitiva, destructible y sin scrolling, construida con HTML, CSS, JavaScript y Canvas 2D. El modo online figura como **Etapa 3 · Próximamente** y todavía no establece conexiones de red.
 
@@ -62,9 +62,9 @@ Opciones combinables:
 - Piernas: pantalón corto, pantalón largo o sin pantalones, con color propio.
 - Calzado: zapatillas, zapatos o descalzo, con color propio.
 - Accesorios booleanos y simultáneos: gafas oscuras, vincha, muñequeras, barbijo, capucha, cinturón y chaleco; cada uno conserva su propio color.
-- Sin pantalones: el hombre usa bóxer blanco con corazones y la mujer ropa interior negra. Sin camiseta, la mujer conserva la parte superior negra del conjunto.
+- Sin pantalones: ambos modelos usan ropa interior negra; el bóxer masculino conserva una cintura blanca para distinguir su silueta. Sin camiseta, la mujer mantiene la parte superior negra del conjunto.
 
-La vista previa del apartado `Personaje` recorre automáticamente los nueve estados para mostrar cómo cada capa acompaña la animación.
+La vista previa del apartado `Personaje` permanece en Idle por defecto. El modo `Demostración` recorre los nueve estados durante tres segundos cada uno para revisar cómo cada capa acompaña la animación.
 
 ## Editor de niveles
 

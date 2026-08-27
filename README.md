@@ -1,8 +1,8 @@
-# MVL — Beta 0.6
+# MVL — Beta 0.8
 
 Arena web 2D competitiva y destructible construida sin frameworks con HTML, CSS, JavaScript y Canvas 2D.
 
-La Beta 0.6 incorpora menú inicial, combate VS IA y PvP local, un personaje 16-bit articulado con personalización persistente por sexo, cabello, ropa, calzado y siete accesorios combinables, editor de cuadrícula, ajustes ES/EN, audio sintetizado, render 60/120 FPS, pantalla completa y controles móviles. El PvP online queda señalado como **Etapa 3 · Próximamente**.
+La Beta 0.8 incorpora menú inicial, combate VS IA y PvP local, un personaje 16-bit articulado con personalización persistente por sexo, cabello, ropa, calzado y siete accesorios combinables, editor de cuadrícula, ajustes ES/EN, audio sintetizado, render 60/120 FPS, pantalla completa y controles móviles. El PvP online queda señalado como **Etapa 3 · Próximamente**.
 
 La documentación funcional completa está en [`worker/source/README.md`](worker/source/README.md).
 

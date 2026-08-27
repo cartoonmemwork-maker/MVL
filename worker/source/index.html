@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="MVL Beta 0.6: arena 2D destructible, rival IA, PvP local, personalización y controles móviles. Online próximamente." />
+    <meta name="description" content="MVL Beta 0.8: arena 2D destructible con personaje personalizable, rival IA, PvP local y controles móviles. Online próximamente." />
     <meta name="theme-color" content="#75aadb" />
-    <title>MVL — Beta 0.6</title>
+    <title>MVL — Beta 0.8</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main id="gameShell" class="game-shell" aria-label="MVL Beta 0.6">
+    <main id="gameShell" class="game-shell" aria-label="MVL Beta 0.8">
       <canvas id="game" width="1280" height="720" tabindex="0" aria-label="Arena jugable de MVL">
         Tu navegador necesita compatibilidad con Canvas 2D para ejecutar MVL.
       </canvas>
@@ -21,7 +21,7 @@
 
       <section id="menuLayer" class="menu-layer" aria-label="Menú de MVL">
         <div class="menu-card" data-screen="main">
-          <p class="eyebrow">BETA 0.6</p>
+          <p class="eyebrow">BETA 0.8</p>
           <h1>MVL</h1>
           <p class="tagline" data-i18n="tagline">ARENA DE BLOQUES DESTRUCTIBLES</p>
           <div class="menu-stack">
@@ -51,7 +51,11 @@
           <div class="customizer-layout">
             <div class="preview-stage">
               <canvas id="characterPreview" width="320" height="360" aria-label="Vista previa animada del personaje"></canvas>
-              <p class="preview-note">16-BIT · 9 ANIMACIONES</p>
+              <div class="preview-toolbar">
+                <label><span data-i18n="previewMode">Vista previa</span><select id="previewModeSelect"><option value="idle" data-i18n="previewIdle">Idle</option><option value="demo" data-i18n="previewDemo">Demostración</option></select></label>
+                <span id="previewStateLabel" class="preview-state">IDLE</span>
+              </div>
+              <p class="preview-note" data-i18n="previewHint">IDLE FIJO · DEMO: 3 SEGUNDOS POR ANIMACIÓN</p>
             </div>
             <div class="customizer-panels">
               <fieldset class="customizer-section">
@@ -133,7 +137,7 @@
         <div class="touch-actions"><button id="touchJump" class="touch-action" type="button" aria-label="Saltar">A<small data-i18n="jump">SALTO</small></button><button id="touchFire" class="touch-action fire" type="button" aria-label="Disparar">B<small data-i18n="fire">FUEGO</small></button></div>
       </div>
 
-      <p id="loadingMessage" class="loading-message">Cargando MVL Beta 0.6…</p>
+      <p id="loadingMessage" class="loading-message">Cargando MVL Beta 0.8…</p>
       <button id="restartButton" class="restart-button" type="button" hidden data-i18n="rematch">REVANCHA</button>
       <button id="menuButton" class="menu-return-button" type="button" hidden data-i18n="mainMenu">MENÚ</button>
       <p id="gameStatus" class="sr-only" aria-live="polite"></p>

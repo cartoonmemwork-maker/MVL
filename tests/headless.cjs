@@ -166,6 +166,18 @@ const customizedAppearance = window.__MVL_DEBUG__.normalizeAppearance({
 assert.equal(customizedAppearance.sex, "female");
 assert.equal(customizedAppearance.darkGlasses, true);
 assert.equal(customizedAppearance.darkGlassesColor, "#123456");
+const migratedHeadband = window.__MVL_DEBUG__.normalizeAppearance({ accessory: "band" });
+assert.equal(migratedHeadband.headband, true);
+assert.equal("accessory" in migratedHeadband, false);
+const removableHeadband = window.__MVL_DEBUG__.normalizeAppearance({
+  accessory: "band", headband: false,
+});
+assert.equal(removableHeadband.headband, false);
+assert.equal("accessory" in removableHeadband, false);
+assert.equal(window.__MVL_DEBUG__.previewStateFor("idle", 99), "idle");
+assert.equal(window.__MVL_DEBUG__.previewStateFor("demo", 2.99), "idle");
+assert.equal(window.__MVL_DEBUG__.previewStateFor("demo", 3), "run");
+assert.equal(window.__MVL_DEBUG__.previewStateFor("demo", 6), "skid");
 assert.equal(window.__MVL_DEBUG__.renderAppearanceMatrix(), 162);
 
 dispatch("keydown", "KeyD");
