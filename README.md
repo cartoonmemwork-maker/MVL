@@ -1,4 +1,4 @@
-# ERROR 101 — BETA 1.01
+# ERROR 101 — BETA 1.02
 
 Primer capítulo del universo digital de Sol, construido sobre la base mecánica de MVL.
 
@@ -8,9 +8,12 @@ Primer capítulo del universo digital de Sol, construido sobre la base mecánica
 - Sol aparece desde el inicio, se mueve mediante IA y conserva exclusivamente su azul original.
 - Sol es neutral hasta recibir daño; entonces identifica al agresor y se defiende durante un período limitado.
 - El visitante controlable aparece con `Enter` y utiliza los ocho inputs definidos.
-- Hoja raster de nueve poses separada del motor y renderizada entre 100 y 250 px mediante cámara dinámica.
+- Animación cuadro a cuadro: seis cuadros de marcha, seis de carrera, idle con pestañeo y ocho acciones corporales sin efectos incrustados.
+- Anclaje calculado desde el último píxel visible de cada cuadro para apoyar los pies exactamente sobre la superficie.
+- Disparo terrestre y aéreo; al mantener abajo en el aire adopta la pose compacta y acelera la caída.
+- Proyectiles y estelas adoptan la paleta de su personaje.
 - 10 HP representados mediante cinco corazones, con mitades correctamente espejadas.
-- Zoom manual con la rueda del mouse, siempre enfocado en los personajes presentes y contenido por los límites reales del mapa.
+- Zoom manual con la rueda del mouse, siempre enfocado en los personajes presentes y contenido por los límites reales del mapa; la vista inicial muestra la cuadrícula completa.
 - Pausa con `Esc`: continuar, reiniciar, personaje y controles.
 - Ocho acciones lógicas configurables: cuatro direcciones, ataque corto, ataque largo, cobertura y correr.
 - Teclado, touch y joystick estándar de PlayStation mediante Gamepad API.
@@ -20,7 +23,7 @@ Primer capítulo del universo digital de Sol, construido sobre la base mecánica
 
 - Simulación fija a 60 Hz.
 - Render desacoplado y apto para pantallas de 60/120 Hz.
-- Cámara local con zoom suave: el personaje se muestra entre 100 y 250 px.
+- Cámara local con zoom suave: inicia en el mapa completo y permite acercarse al personaje con la rueda.
 - El estado del mundo no depende del render, la cámara ni el audio.
 - Estado numerado por `simulationTick`, preparado para snapshots y futura sincronización online.
 
@@ -36,7 +39,7 @@ Primer capítulo del universo digital de Sol, construido sobre la base mecánica
 
 ## Cloud 9
 
-El cielo `#75AADB` utiliza exactamente tres diseños de nube y tres ejemplares de cada diseño: `3 × 3 = 9`. Las posiciones, profundidades y velocidades se distribuyen con una semilla reproducible; todas respetan el mismo viento.
+El cielo `#75AADB` utiliza exactamente tres diseños de nube almacenados como recortes independientes y tres ejemplares de cada diseño: `3 × 3 = 9`. Las posiciones, profundidades y velocidades se distribuyen con una semilla reproducible; todas respetan el mismo viento.
 
 ## Audio
 

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "BETA 1.01";
+  const VERSION = "BETA 1.02";
   const WORLD = Object.freeze({
     width: 1280,
     height: 720,
@@ -26,6 +26,8 @@
     crouchSpeed: 78,
     runSpeed: 350,
     gravity: 1900,
+    fastFallGravity: 3400,
+    fastFallEntrySpeed: 160,
     jumpVelocity: -900,
     maxFallSpeed: 1100,
     invulnerability: 0.78,
@@ -96,19 +98,27 @@
     F: Object.freeze({ type: "floatingBrick", maxHp: 3 }),
     G: Object.freeze({ type: "groundBrick", maxHp: 6 }),
   });
-  const SOL_POSES = Object.freeze({
-    idle: 0,
-    walk: 1,
-    run: 2,
-    jump: 3,
-    fall: 4,
-    crouch: 5,
-    fire: 6,
-    hurt: 7,
-    stomp: 8,
+  const SPRITE_LAYOUTS = Object.freeze({
+    locomotion: Object.freeze({ columns: 6, rows: 3 }),
+    actions: Object.freeze({ columns: 4, rows: 2, referenceFrames: [0, 1, 4, 5, 6] }),
   });
-  const SOL_SHEET = Object.freeze({ columns: 3, rows: 3, cell: 418 });
-  const CLOUD_SHEET = Object.freeze({ columns: 3, cell: 724 });
+  const ANIMATIONS = Object.freeze({
+    idle: Object.freeze({ sheet: "locomotion", row: 0, frames: 6, fps: 1.7, height: 100 }),
+    walk: Object.freeze({ sheet: "locomotion", row: 1, frames: 6, fps: 9, height: 100 }),
+    run: Object.freeze({ sheet: "locomotion", row: 2, frames: 6, fps: 13, height: 100 }),
+    jump: Object.freeze({ sheet: "actions", row: 0, column: 0, height: 100 }),
+    fall: Object.freeze({ sheet: "actions", row: 0, column: 1, height: 100 }),
+    crouch: Object.freeze({ sheet: "actions", row: 0, column: 2, height: 100 }),
+    fastFall: Object.freeze({ sheet: "actions", row: 0, column: 3, height: 100 }),
+    fire: Object.freeze({ sheet: "actions", row: 1, column: 0, height: 100 }),
+    airFire: Object.freeze({ sheet: "actions", row: 1, column: 1, height: 100 }),
+    hurt: Object.freeze({ sheet: "actions", row: 1, column: 2, height: 100 }),
+    stomp: Object.freeze({ sheet: "actions", row: 1, column: 3, height: 100 }),
+  });
+  const CHARACTER_PALETTES = Object.freeze({
+    sol: Object.freeze({ core: "#e9fbff", mid: "#58ddff", edge: "#176fff", fade: "rgba(23,111,255,0)", particle: "#77e5ff" }),
+    visitor: Object.freeze({ core: "#fff7df", mid: "#ffb45e", edge: "#ff5c45", fade: "rgba(255,92,69,0)", particle: "#ffc078" }),
+  });
 
   const canvas = document.querySelector("#game");
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -205,9 +215,9 @@
   let clouds = [];
   let wind = 1;
   let toastTime = 0;
-  let solSprite = null;
-  let cloudSprite = null;
-  let assetsRemaining = 2;
+  let spriteSheets = Object.create(null);
+  let cloudSprites = [null, null, null];
+  let assetsRemaining = 5;
   let previewNeedsDraw = true;
   let nextProjectileId = 1;
   const camera = {
@@ -217,7 +227,7 @@
     targetX: 0,
     targetY: 0,
     targetZoom: 1,
-    userZoom: 1,
+    userZoom: 0,
   };
 
   const showToast = (message, seconds = 2) => {
@@ -270,6 +280,11 @@
     hurtPose: 0,
     stompPose: 0,
     animationState: "idle",
+    previousAnimationState: "idle",
+    animationTime: 0,
+    blinkTime: 0,
+    nextBlink: 2.2 + (id === "sol" ? 0 : 0.8),
+    fastFalling: false,
     aiTimer: 0,
     aiFireTimer: 0.55,
     aiWanderTimer: 0,
@@ -333,13 +348,13 @@
     projectiles = [];
     particles = [];
     clouds = createCloud9(0x4d564c01);
-    camera.x = 320;
-    camera.y = 540;
-    camera.zoom = CAMERA_LIMITS.soloZoom;
+    camera.x = WORLD.width / 2;
+    camera.y = WORLD.height / 2;
+    camera.zoom = CAMERA_LIMITS.minZoom;
     camera.targetX = camera.x;
     camera.targetY = camera.y;
     camera.targetZoom = camera.zoom;
-    camera.userZoom = 1;
+    camera.userZoom = 0;
     phase = "playing";
     pauseLayer.hidden = true;
     gameStatus.textContent = "Partida reiniciada";
@@ -541,6 +556,13 @@
     actor.defenseTimer = Math.max(0, actor.defenseTimer - dt);
     actor.jumpBuffer = Math.max(0, actor.jumpBuffer - dt);
     actor.coyote = actor.onGround ? 0.09 : Math.max(0, actor.coyote - dt);
+    actor.animationTime += dt;
+    actor.nextBlink -= dt;
+    actor.blinkTime = Math.max(0, actor.blinkTime - dt);
+    if (actor.nextBlink <= 0) {
+      actor.blinkTime = 0.13;
+      actor.nextBlink = 3.1 + ((simulationTick + (actor.id === "sol" ? 17 : 43)) % 151) / 100;
+    }
 
     if (actor.health <= 0) {
       actor.vx = moveToward(actor.vx, 0, ACTOR.deceleration * dt);
@@ -551,6 +573,8 @@
 
     const wantsCrouch = actions.down.held || actor.forcedCrouch > 0;
     changeCrouch(actor, wantsCrouch);
+    actor.fastFalling = !actor.onGround && actions.down.held;
+    if (actor.fastFalling) actor.vy = Math.max(actor.vy, ACTOR.fastFallEntrySpeed);
     let direction = 0;
     if (actions.left.held) direction -= 1;
     if (actions.right.held) direction += 1;
@@ -572,9 +596,11 @@
 
     actor.x += actor.vx * dt;
     resolveActorHorizontal(actor);
-    actor.vy = Math.min(ACTOR.maxFallSpeed, actor.vy + ACTOR.gravity * dt);
+    const gravity = actor.fastFalling ? ACTOR.fastFallGravity : ACTOR.gravity;
+    actor.vy = Math.min(ACTOR.maxFallSpeed, actor.vy + gravity * dt);
     actor.y += actor.vy * dt;
     resolveActorVertical(actor);
+    actor.fastFalling = actor.fastFalling && !actor.onGround;
 
     if (actor.y > WORLD.height + 240) {
       actor.health = 0;
@@ -585,12 +611,17 @@
 
     if (actor.stompPose > 0) actor.animationState = "stomp";
     else if (actor.hurtPose > 0) actor.animationState = "hurt";
-    else if (actor.firePose > 0) actor.animationState = "fire";
+    else if (actor.firePose > 0) actor.animationState = actor.onGround ? "fire" : "airFire";
+    else if (actor.fastFalling) actor.animationState = "fastFall";
     else if (!actor.onGround) actor.animationState = actor.vy < 0 ? "jump" : "fall";
     else if (actor.crouching) actor.animationState = "crouch";
     else if (Math.abs(actor.vx) > ACTOR.walkSpeed + 20) actor.animationState = "run";
     else if (Math.abs(actor.vx) > 20) actor.animationState = "walk";
     else actor.animationState = "idle";
+    if (actor.animationState !== actor.previousAnimationState) {
+      actor.animationTime = 0;
+      actor.previousAnimationState = actor.animationState;
+    }
   };
 
   const resolveActorHorizontal = (actor) => {
@@ -641,6 +672,15 @@
     const direction = Math.sign(actor.x + actor.width / 2 - sourceX) || 1;
     actor.vx += direction * 130;
     actor.vy = Math.min(actor.vy, -180);
+    const palette = CHARACTER_PALETTES[actor.id] || CHARACTER_PALETTES.visitor;
+    spawnParticles(
+      actor.x + actor.width / 2 - direction * actor.width * 0.45,
+      actor.y + actor.height * 0.42,
+      palette.particle,
+      11,
+      250,
+      0.34,
+    );
     audio.play("hit", actor.x + actor.width / 2);
     return true;
   };
@@ -673,6 +713,7 @@
     actor.firePose = 0.15;
     const x = actor.x + actor.width / 2 + actor.facing * (actor.width / 2 + 12);
     const y = actor.y + Math.min(36, actor.height * 0.45);
+    const palette = CHARACTER_PALETTES[actor.id] || CHARACTER_PALETTES.visitor;
     projectiles.push({
       id: nextProjectileId++,
       ownerId: actor.id,
@@ -688,7 +729,9 @@
       bounces: 0,
       opacity: 1,
       trail: 0,
+      palette,
     });
+    spawnParticles(x, y, palette.particle, 5, 120, 0.2);
     audio.play("fire", x);
   };
 
@@ -712,7 +755,7 @@
       shot.y += shot.vy * dt;
       if (shot.trail <= 0) {
         shot.trail = 0.035;
-        spawnParticles(shot.x - shot.vx * 0.015, shot.y - shot.vy * 0.015, "#ffcc4d", 1, 35, 0.28);
+        spawnParticles(shot.x - shot.vx * 0.015, shot.y - shot.vy * 0.015, shot.palette.particle, 1, 35, 0.28);
       }
       for (const block of activeBlocks()) {
         if (!circleHitsBlock(shot, block)) continue;
@@ -751,7 +794,7 @@
         const y = (first.y + second.y) / 2;
         first.active = false;
         second.active = false;
-        radialExplosion(x, y);
+        radialExplosion(x, y, first.palette, second.palette);
         break;
       }
     }
@@ -773,12 +816,13 @@
   const destroyProjectile = (shot, particlesToo) => {
     if (!shot.active) return;
     shot.active = false;
-    if (particlesToo) spawnParticles(shot.x, shot.y, "#ffd45a", 8, 190);
+    if (particlesToo) spawnParticles(shot.x, shot.y, shot.palette.particle, 8, 190);
   };
 
-  const radialExplosion = (x, y) => {
+  const radialExplosion = (x, y, firstPalette = CHARACTER_PALETTES.sol, secondPalette = CHARACTER_PALETTES.visitor) => {
     audio.play("clash", x);
-    spawnParticles(x, y, "#fff1a8", 20, 420, 0.55);
+    spawnParticles(x, y, firstPalette.particle, 10, 420, 0.55);
+    spawnParticles(x, y, secondPalette.particle, 10, 420, 0.55);
     for (const actor of [player, rival]) {
       if (!actor || actor.health <= 0) continue;
       const dx = actor.x + actor.width / 2 - x;
@@ -879,12 +923,13 @@
 
   const cameraGoalFor = (actors, userZoom = camera.userZoom) => {
     const alive = actors.filter((actor) => actor && actor.health > 0);
+    const manualBlend = clamp(userZoom, 0, 1);
     if (alive.length <= 1) {
       const actor = alive[0] || player;
       return {
         x: actor.x + actor.width / 2,
         y: actor.y + actor.height / 2,
-        zoom: clamp(CAMERA_LIMITS.soloZoom * userZoom, CAMERA_LIMITS.minZoom, CAMERA_LIMITS.maxZoom),
+        zoom: lerp(CAMERA_LIMITS.minZoom, CAMERA_LIMITS.soloZoom, manualBlend),
       };
     }
     const centers = alive.map((actor) => ({ x: actor.x + actor.width / 2, y: actor.y + actor.height / 2 }));
@@ -894,10 +939,11 @@
     const maxY = Math.max(...centers.map((point) => point.y));
     const zoomX = WORLD.width / (maxX - minX + 300);
     const zoomY = WORLD.height / (maxY - minY + 260);
+    const automaticZoom = clamp(Math.min(zoomX, zoomY), CAMERA_LIMITS.minZoom, CAMERA_LIMITS.maxZoom);
     return {
       x: (minX + maxX) / 2,
       y: (minY + maxY) / 2,
-      zoom: clamp(Math.min(zoomX, zoomY) * userZoom, CAMERA_LIMITS.minZoom, CAMERA_LIMITS.maxZoom),
+      zoom: lerp(CAMERA_LIMITS.minZoom, automaticZoom, manualBlend),
     };
   };
 
@@ -931,25 +977,104 @@
     }
   };
 
+  const prepareSpriteSheet = (image, layout) => {
+    const columns = layout.columns;
+    const rows = layout.rows;
+    const surface = document.createElement("canvas");
+    surface.width = image.width;
+    surface.height = image.height;
+    const surfaceContext = surface.getContext("2d", { willReadFrequently: true });
+    surfaceContext.drawImage(image, 0, 0);
+    const pixels = surfaceContext.getImageData(0, 0, image.width, image.height).data;
+    const frames = [];
+    for (let row = 0; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const sx = Math.round(column * image.width / columns);
+        const sy = Math.round(row * image.height / rows);
+        const right = Math.round((column + 1) * image.width / columns);
+        const bottom = Math.round((row + 1) * image.height / rows);
+        let minX = right;
+        let minY = bottom;
+        let maxX = sx;
+        let maxY = sy;
+        for (let y = sy; y < bottom; y += 1) {
+          for (let x = sx; x < right; x += 1) {
+            if (pixels[(y * image.width + x) * 4 + 3] < 18) continue;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
+        }
+        const hasPixels = maxX >= minX && maxY >= minY;
+        frames.push({
+          sx,
+          sy,
+          sw: right - sx,
+          sh: bottom - sy,
+          visibleHeight: hasPixels ? maxY - minY + 1 : bottom - sy,
+          anchorBottom: hasPixels ? maxY - sy + 1 : bottom - sy,
+        });
+      }
+    }
+    const referenceFrames = layout.referenceFrames || frames.map((_, index) => index);
+    const referenceHeights = referenceFrames.map((index) => frames[index]?.visibleHeight).filter(Boolean).sort((a, b) => a - b);
+    const referenceHeight = referenceHeights[Math.floor(referenceHeights.length / 2)] || image.height / rows;
+    return { image, columns, rows, frames, referenceHeight };
+  };
+
+  const animationFrameFor = (actor) => {
+    const animation = ANIMATIONS[actor.animationState] || ANIMATIONS.idle;
+    let column = animation.column || 0;
+    if (animation.frames) column = Math.floor(actor.animationTime * animation.fps) % animation.frames;
+    if (actor.animationState === "idle" && actor.blinkTime > 0) column = 3;
+    return { animation, column };
+  };
+
+  const drawPreparedSprite = (targetContext, sheet, row, column, x, baseline, visibleHeight, facing = 1, filter = "none") => {
+    if (!sheet) return;
+    const frame = sheet.frames[row * sheet.columns + column];
+    if (!frame) return;
+    const scale = visibleHeight / sheet.referenceHeight;
+    const width = frame.sw * scale;
+    const height = frame.sh * scale;
+    targetContext.save();
+    targetContext.translate(x, baseline);
+    if (facing < 0) targetContext.scale(-1, 1);
+    targetContext.imageSmoothingEnabled = true;
+    targetContext.filter = filter;
+    targetContext.drawImage(
+      sheet.image,
+      frame.sx,
+      frame.sy,
+      frame.sw,
+      frame.sh,
+      -width / 2,
+      -frame.anchorBottom * scale,
+      width,
+      height,
+    );
+    targetContext.restore();
+  };
+
   const drawCloud = (cloud) => {
+    const cloudSprite = cloudSprites[cloud.design];
     if (!cloudSprite) return;
     const parallax = 0.02 + cloud.depth * 0.018;
     const x = cloud.x - (camera.x - WORLD.width / 2) * parallax;
     const y = cloud.y - (camera.y - WORLD.height / 2) * parallax * 0.6;
-    const size = 210 * cloud.scale * (1 + (camera.zoom - 1) * 0.025);
+    const baseHeights = [78, 94, 90];
+    const height = baseHeights[cloud.design] * cloud.scale * (1 + (camera.zoom - 1) * 0.025);
+    const width = height * cloudSprite.width / cloudSprite.height;
     ctx.save();
     ctx.globalAlpha = 0.7 + cloud.depth * 0.1;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(
       cloudSprite,
-      cloud.design * CLOUD_SHEET.cell,
-      0,
-      CLOUD_SHEET.cell,
-      CLOUD_SHEET.cell,
-      Math.round(x - size / 2),
-      Math.round(y - size * 0.38),
-      size,
-      size,
+      Math.round(x - width / 2),
+      Math.round(y - height / 2),
+      width,
+      height,
     );
     ctx.restore();
   };
@@ -1006,36 +1131,46 @@
     }
   };
 
-  const drawActor = (actor, alpha, time) => {
+  const drawActorMotionEffects = (actor, alpha) => {
+    if (!actor || actor.health <= 0 || actor.onGround || actor.vy < 260) return;
+    const x = lerp(actor.prevX, actor.x, alpha) + actor.width / 2;
+    const y = lerp(actor.prevY, actor.y, alpha) + actor.height * 0.48;
+    const palette = CHARACTER_PALETTES[actor.id] || CHARACTER_PALETTES.visitor;
+    const intensity = clamp((actor.vy - 220) / 720, 0.15, 1);
+    ctx.save();
+    ctx.globalAlpha = 0.28 + intensity * 0.42;
+    ctx.strokeStyle = palette.particle;
+    ctx.lineWidth = 2 / camera.zoom;
+    ctx.lineCap = "round";
+    for (let index = -1; index <= 1; index += 1) {
+      const offset = index * 17;
+      const length = 18 + intensity * (22 + Math.abs(index) * 5);
+      ctx.beginPath();
+      ctx.moveTo(x + offset, y - 42 - Math.abs(index) * 5);
+      ctx.lineTo(x + offset - actor.facing * 3, y - 42 - length);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+
+  const drawActor = (actor, alpha) => {
     if (!actor || actor.health <= 0) return;
     if (actor.invulnerable > 0 && Math.floor(actor.invulnerable * 24) % 2 === 0) return;
     const x = lerp(actor.prevX, actor.x, alpha);
     const y = lerp(actor.prevY, actor.y, alpha);
-    if (!solSprite) return;
-    const pose = SOL_POSES[actor.animationState] ?? SOL_POSES.idle;
-    const sourceX = (pose % SOL_SHEET.columns) * SOL_SHEET.cell;
-    const sourceY = Math.floor(pose / SOL_SHEET.columns) * SOL_SHEET.cell;
-    const idleBreath = actor.animationState === "idle"
-      ? 1 + Math.sin(time * 2.2 + (actor.id === "sol" ? 1.2 : 0)) * 0.004
-      : 1;
-    const frameSize = ACTOR.spriteFrameSize * idleBreath;
-    ctx.save();
-    ctx.translate(x + actor.width / 2, y + actor.height);
-    if (actor.facing < 0) ctx.scale(-1, 1);
-    ctx.imageSmoothingEnabled = true;
-    if (actor.id !== "sol") ctx.filter = "hue-rotate(170deg) saturate(.82) brightness(1.08)";
-    ctx.drawImage(
-      solSprite,
-      sourceX,
-      sourceY,
-      SOL_SHEET.cell,
-      SOL_SHEET.cell,
-      -frameSize / 2,
-      -frameSize + 6,
-      frameSize,
-      frameSize,
+    const { animation, column } = animationFrameFor(actor);
+    const sheet = spriteSheets[animation.sheet];
+    drawPreparedSprite(
+      ctx,
+      sheet,
+      animation.row,
+      column,
+      x + actor.width / 2,
+      y + actor.height,
+      animation.height,
+      actor.facing,
+      actor.id === "sol" ? "none" : "hue-rotate(170deg) saturate(.82) brightness(1.08)",
     );
-    ctx.restore();
   };
 
   const drawProjectile = (shot, alpha) => {
@@ -1045,15 +1180,15 @@
     ctx.save();
     ctx.globalAlpha = shot.opacity;
     const gradient = ctx.createRadialGradient(x - 3, y - 3, 1, x, y, shot.radius + 4);
-    gradient.addColorStop(0, "#fffbd0");
-    gradient.addColorStop(0.35, "#ffd23f");
-    gradient.addColorStop(0.72, "#ff7138");
-    gradient.addColorStop(1, "rgba(196,30,24,0)");
+    gradient.addColorStop(0, shot.palette.core);
+    gradient.addColorStop(0.35, shot.palette.mid);
+    gradient.addColorStop(0.72, shot.palette.edge);
+    gradient.addColorStop(1, shot.palette.fade);
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(x, y, shot.radius + 4, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#fff5a6";
+    ctx.fillStyle = shot.palette.core;
     ctx.fillRect(x - 4, y - 4, 8, 8);
     ctx.restore();
   };
@@ -1121,13 +1256,15 @@
     blocks.forEach(drawBlock);
     drawParticles(alpha);
     projectiles.forEach((shot) => drawProjectile(shot, alpha));
-    drawActor(player, alpha, time);
-    drawActor(rival, alpha, time);
+    drawActorMotionEffects(player, alpha);
+    drawActorMotionEffects(rival, alpha);
+    drawActor(player, alpha);
+    drawActor(rival, alpha);
     ctx.restore();
 
     drawHearts(player, false);
     if (rival) drawHearts(rival, true);
-    if (previewNeedsDraw && activePanel === "character") drawCharacterPreview(time);
+    if (activePanel === "character") drawCharacterPreview(time);
   };
 
   const drawCharacterPreview = (time = 0) => {
@@ -1141,19 +1278,16 @@
     previewContext.fillRect(0, 0, characterPreview.width, characterPreview.height);
     previewContext.fillStyle = "#456b82";
     previewContext.fillRect(0, 386, characterPreview.width, 3);
-    if (solSprite) {
-      const frameSize = 350 * (1 + Math.sin(time * 2.2) * 0.003);
-      previewContext.imageSmoothingEnabled = true;
-      previewContext.drawImage(
-        solSprite,
+    if (spriteSheets.locomotion) {
+      const previewColumn = Math.floor(time * 0.45) % 11 === 8 ? 3 : Math.floor(time * 1.4) % 3;
+      drawPreparedSprite(
+        previewContext,
+        spriteSheets.locomotion,
         0,
-        0,
-        SOL_SHEET.cell,
-        SOL_SHEET.cell,
-        (characterPreview.width - frameSize) / 2,
-        390 - frameSize,
-        frameSize,
-        frameSize,
+        previewColumn,
+        characterPreview.width / 2,
+        386,
+        280,
       );
     } else {
       previewContext.fillStyle = "#07111f";
@@ -1175,15 +1309,24 @@
       loadingMessage.hidden = true;
       return;
     }
-    const solImage = new Image();
-    solImage.addEventListener("load", () => { solSprite = solImage; assetLoaded(); });
-    solImage.addEventListener("error", assetLoaded);
-    solImage.src = "/assets/sol-poses.png";
+    const loadSheet = (name, source, layout) => {
+      const image = new Image();
+      image.addEventListener("load", () => {
+        try { spriteSheets[name] = prepareSpriteSheet(image, layout); } catch { spriteSheets[name] = null; }
+        assetLoaded();
+      });
+      image.addEventListener("error", assetLoaded);
+      image.src = source;
+    };
+    loadSheet("locomotion", "/assets/sol-locomotion-v2.png", SPRITE_LAYOUTS.locomotion);
+    loadSheet("actions", "/assets/sol-actions-v2.png", SPRITE_LAYOUTS.actions);
 
-    const cloudImage = new Image();
-    cloudImage.addEventListener("load", () => { cloudSprite = cloudImage; assetLoaded(); });
-    cloudImage.addEventListener("error", assetLoaded);
-    cloudImage.src = "/assets/cloud9.png";
+    ["small", "medium", "long"].forEach((name, index) => {
+      const image = new Image();
+      image.addEventListener("load", () => { cloudSprites[index] = image; assetLoaded(); });
+      image.addEventListener("error", assetLoaded);
+      image.src = `/assets/cloud-${name}-v2.png`;
+    });
   };
 
   const pollGamepad = () => {
@@ -1289,8 +1432,7 @@
 
   canvas.addEventListener("wheel", (event) => {
     if (phase !== "playing") return;
-    const factor = Math.exp(-event.deltaY * 0.0012);
-    camera.userZoom = clamp(camera.userZoom * factor, 0.55, 1.45);
+    camera.userZoom = clamp(camera.userZoom - event.deltaY * 0.001, 0, 1);
     event.preventDefault();
   }, { passive: false });
 
