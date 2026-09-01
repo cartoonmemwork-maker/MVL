@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "BETA 1.00";
+  const VERSION = "BETA 1.01";
   const WORLD = Object.freeze({
     width: 1280,
     height: 720,
@@ -18,6 +18,7 @@
     standingHeight: 80,
     crouchingHeight: 40,
     visualHeight: 100,
+    spriteFrameSize: 140,
     maxHealth: 10,
     acceleration: 2200,
     deceleration: 2800,
@@ -30,6 +31,7 @@
     invulnerability: 0.78,
     stompDamage: 3,
     stompBounce: -780,
+    defenseTime: 8,
   });
   const FIREBALL = Object.freeze({
     radius: 10,
@@ -94,34 +96,19 @@
     F: Object.freeze({ type: "floatingBrick", maxHp: 3 }),
     G: Object.freeze({ type: "groundBrick", maxHp: 6 }),
   });
-  const CLOUD_PATTERNS = Object.freeze([
-    Object.freeze([
-      "       1111       ",
-      "    112222211     ",
-      "  1122222222211   ",
-      " 1222233333222221 ",
-      "122233333333322221",
-      "122222222222222221",
-      " 1111111111111111 ",
-    ]),
-    Object.freeze([
-      "          111       ",
-      "      112222211      ",
-      "  1112222222222111   ",
-      " 1222223333322222221 ",
-      "122233333333332222221",
-      "122222222222222222221",
-      " 1111111111111111111 ",
-    ]),
-    Object.freeze([
-      "     111        111   ",
-      "  11222211   11222211 ",
-      "1122222222112222222221",
-      "1222333333333333322221",
-      "1222222222222222222221",
-      " 11111111111111111111 ",
-    ]),
-  ]);
+  const SOL_POSES = Object.freeze({
+    idle: 0,
+    walk: 1,
+    run: 2,
+    jump: 3,
+    fall: 4,
+    crouch: 5,
+    fire: 6,
+    hurt: 7,
+    stomp: 8,
+  });
+  const SOL_SHEET = Object.freeze({ columns: 3, rows: 3, cell: 418 });
+  const CLOUD_SHEET = Object.freeze({ columns: 3, cell: 724 });
 
   const canvas = document.querySelector("#game");
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -158,7 +145,7 @@
 
   const readBindings = () => {
     try {
-      const stored = JSON.parse(window.localStorage.getItem("mvl-beta-1-bindings") || "null");
+      const stored = JSON.parse(window.localStorage.getItem("error-101-beta-1-bindings") || "null");
       if (!stored) return { ...DEFAULT_BINDINGS };
       const result = { ...DEFAULT_BINDINGS };
       for (const action of INPUT_ACTIONS) {
@@ -182,7 +169,7 @@
   const actionForCode = (code) => INPUT_ACTIONS.find((action) => bindings[action] === code);
   const keyLabel = (code) => KEY_LABELS[code] || code.replace(/^Key/, "").replace(/^Digit/, "");
   const saveBindings = () => {
-    try { window.localStorage.setItem("mvl-beta-1-bindings", JSON.stringify(bindings)); } catch { /* localStorage opcional */ }
+    try { window.localStorage.setItem("error-101-beta-1-bindings", JSON.stringify(bindings)); } catch { /* localStorage opcional */ }
   };
 
   const renderControls = () => {
@@ -218,10 +205,20 @@
   let clouds = [];
   let wind = 1;
   let toastTime = 0;
-  let fighterSprite = null;
+  let solSprite = null;
+  let cloudSprite = null;
+  let assetsRemaining = 2;
   let previewNeedsDraw = true;
   let nextProjectileId = 1;
-  const camera = { x: WORLD.width / 2, y: WORLD.height / 2, zoom: 1, targetX: 0, targetY: 0, targetZoom: 1 };
+  const camera = {
+    x: WORLD.width / 2,
+    y: WORLD.height / 2,
+    zoom: 1,
+    targetX: 0,
+    targetY: 0,
+    targetZoom: 1,
+    userZoom: 1,
+  };
 
   const showToast = (message, seconds = 2) => {
     if (!toastElement) return;
@@ -258,7 +255,7 @@
     height: ACTOR.standingHeight,
     vx: 0,
     vy: 0,
-    facing: isAi ? -1 : 1,
+    facing: id === "sol" ? 1 : -1,
     health: ACTOR.maxHealth,
     maxHealth: ACTOR.maxHealth,
     onGround: true,
@@ -269,9 +266,17 @@
     coyote: 0,
     jumpBuffer: 0,
     fireCooldown: 0,
+    firePose: 0,
+    hurtPose: 0,
+    stompPose: 0,
     animationState: "idle",
     aiTimer: 0,
     aiFireTimer: 0.55,
+    aiWanderTimer: 0,
+    aiWanderDirection: 1,
+    aiState: isAi ? "neutral" : "controlled",
+    defenseTimer: 0,
+    aggressorId: null,
     aiPrevious: Object.fromEntries(INPUT_ACTIONS.map((action) => [action, false])),
   });
 
@@ -323,7 +328,7 @@
   const resetGame = () => {
     simulationTick = 0;
     blocks = createBlocks();
-    player = createActor("player", 170, false);
+    player = createActor("sol", 170, true);
     rival = null;
     projectiles = [];
     particles = [];
@@ -334,19 +339,18 @@
     camera.targetX = camera.x;
     camera.targetY = camera.y;
     camera.targetZoom = camera.zoom;
+    camera.userZoom = 1;
     phase = "playing";
     pauseLayer.hidden = true;
     gameStatus.textContent = "Partida reiniciada";
-    showToast("ENTER · INVOCAR IA     ESC · PAUSA", 3.2);
   };
 
   const spawnRival = () => {
     if (rival?.health > 0) return;
-    rival = createActor("rival", 1050, true);
+    rival = createActor("visitor", 1050, false);
     rival.y = 560;
     audio.play("spawn", rival.x);
-    showToast("RIVAL IA INCORPORADO", 1.8);
-    gameStatus.textContent = "Rival IA incorporado";
+    gameStatus.textContent = "Visitante incorporado";
   };
 
   const activeBlocks = () => blocks.filter((block) => block.active);
@@ -432,8 +436,42 @@
 
   const aiActions = (actor) => {
     const wants = Object.fromEntries(INPUT_ACTIONS.map((action) => [action, false]));
-    if (!player || player.health <= 0 || actor.health <= 0) return edgeActions(actor, wants);
-    const dx = player.x - actor.x;
+    const target = otherActor(actor);
+    if (actor.health <= 0) return edgeActions(actor, wants);
+
+    if (actor.defenseTimer <= 0) {
+      actor.aiState = "neutral";
+      actor.aggressorId = null;
+    }
+
+    if (!target || target.health <= 0 || actor.aiState !== "defensive") {
+      actor.aiWanderTimer -= WORLD.fixedStep;
+      if (actor.aiWanderTimer <= 0) {
+        const phase = Math.floor(simulationTick / 180) % 4;
+        actor.aiWanderDirection = phase === 1 ? 0 : phase === 2 ? -1 : 1;
+        actor.aiWanderTimer = 1.2 + (simulationTick % 37) / 50;
+      }
+      if (actor.x < 70) actor.aiWanderDirection = 1;
+      if (actor.x > WORLD.width - actor.width - 70) actor.aiWanderDirection = -1;
+      if (target && Math.abs(target.x - actor.x) < 92) {
+        actor.aiWanderDirection = Math.sign(actor.x - target.x) || -actor.facing;
+      }
+      wants.left = actor.aiWanderDirection < 0;
+      wants.right = actor.aiWanderDirection > 0;
+      const direction = actor.aiWanderDirection || actor.facing;
+      const obstacle = activeBlocks().some((block) => overlap({
+        x: direction > 0 ? actor.x + actor.width : actor.x - 12,
+        y: actor.y + 16,
+        width: 12,
+        height: actor.height - 18,
+      }, block));
+      const footX = actor.x + actor.width / 2 + direction * 34;
+      const gap = actor.onGround && direction !== 0 && !supportAt(footX, actor.y + actor.height + 6);
+      if (actor.onGround && direction !== 0 && (obstacle || gap)) wants.up = true;
+      return edgeActions(actor, wants);
+    }
+
+    const dx = target.x - actor.x;
     const distance = Math.abs(dx);
     wants.left = dx < -24;
     wants.right = dx > 24;
@@ -448,7 +486,7 @@
     }, block));
     const gap = actor.onGround && !supportAt(footX, actor.y + actor.height + 6);
     actor.aiTimer -= WORLD.fixedStep;
-    if (actor.aiTimer <= 0 && actor.onGround && (obstacle || gap || player.y + 40 < actor.y || distance < 90)) {
+    if (actor.aiTimer <= 0 && actor.onGround && (obstacle || gap || target.y + 40 < actor.y || distance < 90)) {
       wants.up = true;
       actor.aiTimer = 0.32 + (simulationTick % 17) / 100;
     }
@@ -457,7 +495,7 @@
       shot.y > actor.y + 24 && shot.y < actor.y + actor.height);
     if (incoming && actor.onGround && simulationTick % 3 !== 0) wants.down = true;
     actor.aiFireTimer -= WORLD.fixedStep;
-    if (actor.aiFireTimer <= 0 && distance < 610 && Math.abs((player.y + player.height / 2) - (actor.y + actor.height / 2)) < 130) {
+    if (actor.aiFireTimer <= 0 && distance < 610 && Math.abs((target.y + target.height / 2) - (actor.y + actor.height / 2)) < 130) {
       wants.ranged = true;
       actor.aiFireTimer = 0.65 + (simulationTick % 23) / 50;
     }
@@ -497,6 +535,10 @@
     actor.heartFlash = Math.max(0, actor.heartFlash - dt);
     actor.forcedCrouch = Math.max(0, actor.forcedCrouch - dt);
     actor.fireCooldown = Math.max(0, actor.fireCooldown - dt);
+    actor.firePose = Math.max(0, actor.firePose - dt);
+    actor.hurtPose = Math.max(0, actor.hurtPose - dt);
+    actor.stompPose = Math.max(0, actor.stompPose - dt);
+    actor.defenseTimer = Math.max(0, actor.defenseTimer - dt);
     actor.jumpBuffer = Math.max(0, actor.jumpBuffer - dt);
     actor.coyote = actor.onGround ? 0.09 : Math.max(0, actor.coyote - dt);
 
@@ -538,10 +580,13 @@
       actor.health = 0;
       actor.vx = 0;
       actor.vy = 0;
-      gameStatus.textContent = actor.isAi ? "La IA cayó al vacío" : "Caíste al vacío";
+      gameStatus.textContent = actor.id === "sol" ? "Sol cayó al vacío" : "El visitante cayó al vacío";
     }
 
-    if (!actor.onGround) actor.animationState = actor.vy < 0 ? "jump" : "fall";
+    if (actor.stompPose > 0) actor.animationState = "stomp";
+    else if (actor.hurtPose > 0) actor.animationState = "hurt";
+    else if (actor.firePose > 0) actor.animationState = "fire";
+    else if (!actor.onGround) actor.animationState = actor.vy < 0 ? "jump" : "fall";
     else if (actor.crouching) actor.animationState = "crouch";
     else if (Math.abs(actor.vx) > ACTOR.walkSpeed + 20) actor.animationState = "run";
     else if (Math.abs(actor.vx) > 20) actor.animationState = "walk";
@@ -569,7 +614,9 @@
       } else if (actor.vy < 0 && actor.prevY >= block.y + block.height - 8) {
         actor.y = block.y + block.height;
         actor.vy = 0;
-        if (block.type === "floatingBrick" && !actor.crouching) damageBlock(block, block.maxHp, actor.x + actor.width / 2);
+        if (block.type === "floatingBrick" && !actor.crouching) {
+          damageBlock(block, block.maxHp, actor.x + actor.width / 2, actor.id);
+        }
       } else {
         const leftPenetration = actor.x + actor.width - block.x;
         const rightPenetration = block.x + block.width - actor.x;
@@ -580,11 +627,17 @@
     }
   };
 
-  const damageActor = (actor, amount, sourceX, force = false) => {
+  const damageActor = (actor, amount, sourceX, force = false, sourceId = null) => {
     if (!actor || actor.health <= 0 || (!force && actor.invulnerable > 0)) return false;
     actor.health = Math.max(0, actor.health - amount);
     actor.heartFlash = 0.42;
+    actor.hurtPose = 0.24;
     if (!force) actor.invulnerable = ACTOR.invulnerability;
+    if (actor.isAi && sourceId && sourceId !== actor.id) {
+      actor.aiState = "defensive";
+      actor.defenseTimer = ACTOR.defenseTime;
+      actor.aggressorId = sourceId;
+    }
     const direction = Math.sign(actor.x + actor.width / 2 - sourceX) || 1;
     actor.vx += direction * 130;
     actor.vy = Math.min(actor.vy, -180);
@@ -592,7 +645,7 @@
     return true;
   };
 
-  const damageBlock = (block, amount, sourceX) => {
+  const damageBlock = (block, amount, sourceX, sourceId = null) => {
     if (!block.active) return;
     block.hp -= amount;
     audio.play(block.type === "groundBrick" ? "ground" : "brick", block.x + block.width / 2);
@@ -606,8 +659,8 @@
       const feet = actor.y + actor.height;
       const supported = feet >= block.y - 5 && feet <= block.y + 7 && actor.x + actor.width > block.x && actor.x < block.x + block.width;
       if (!supported) continue;
-      damageActor(actor, 1, sourceX ?? block.x + block.width / 2, true);
-      const radial = Math.sign(actor.x + actor.width / 2 - (block.x + block.width / 2)) || (actor.id === "player" ? -1 : 1);
+      damageActor(actor, 1, sourceX ?? block.x + block.width / 2, true, sourceId);
+      const radial = Math.sign(actor.x + actor.width / 2 - (block.x + block.width / 2)) || (actor === player ? -1 : 1);
       actor.vx += radial * 170;
       actor.vy = -280;
       actor.onGround = false;
@@ -617,6 +670,7 @@
   const fireProjectile = (actor) => {
     if (actor.fireCooldown > 0 || projectiles.filter((shot) => shot.active && shot.ownerId === actor.id).length >= FIREBALL.maxActive) return;
     actor.fireCooldown = 0.18;
+    actor.firePose = 0.15;
     const x = actor.x + actor.width / 2 + actor.facing * (actor.width / 2 + 12);
     const y = actor.y + Math.min(36, actor.height * 0.45);
     projectiles.push({
@@ -677,7 +731,7 @@
         }
         shot.bounces += 1;
         shot.opacity = Math.max(0.15, 1 - shot.bounces / FIREBALL.maxBounces);
-        damageBlock(block, 1, shot.x);
+        damageBlock(block, 1, shot.x, shot.ownerId);
         if (shot.bounces >= FIREBALL.maxBounces) destroyProjectile(shot, true);
         break;
       }
@@ -704,14 +758,14 @@
 
     for (const shot of projectiles) {
       if (!shot.active) continue;
-      const target = shot.ownerId === "player" ? rival : player;
+      const target = [player, rival].find((actor) => actor && actor.id !== shot.ownerId);
       if (!target || target.health <= 0) continue;
       const nearestX = clamp(shot.x, target.x, target.x + target.width);
       const nearestY = clamp(shot.y, target.y, target.y + target.height);
       const dx = shot.x - nearestX;
       const dy = shot.y - nearestY;
       if (dx * dx + dy * dy > shot.radius * shot.radius) continue;
-      if (damageActor(target, 1, shot.x)) destroyProjectile(shot, true);
+      if (damageActor(target, 1, shot.x, false, shot.ownerId)) destroyProjectile(shot, true);
     }
     projectiles = projectiles.filter((shot) => shot.active);
   };
@@ -732,7 +786,7 @@
       const distance = Math.hypot(dx, dy);
       if (distance >= FIREBALL.clashRadius) continue;
       const strength = 520 * (1 - distance / FIREBALL.clashRadius);
-      const normalX = distance > 1 ? dx / distance : (actor.id === "player" ? -1 : 1);
+      const normalX = distance > 1 ? dx / distance : (actor === player ? -1 : 1);
       const normalY = distance > 1 ? dy / distance : -0.3;
       actor.vx += normalX * strength;
       actor.vy += Math.min(-80, normalY * strength - 80);
@@ -807,7 +861,8 @@
     audio.play("stomp", target.x + target.width / 2);
     spawnParticles(target.x + target.width / 2, target.y + 3, "#ffffff", 10, 230);
     if (target.crouching) return;
-    if (damageActor(target, ACTOR.stompDamage, attacker.x + attacker.width / 2)) {
+    target.stompPose = 0.3;
+    if (damageActor(target, ACTOR.stompDamage, attacker.x + attacker.width / 2, false, attacker.id)) {
       target.forcedCrouch = ACTOR.invulnerability;
       changeCrouch(target, true);
     }
@@ -822,11 +877,15 @@
     }
   };
 
-  const cameraGoalFor = (actors) => {
+  const cameraGoalFor = (actors, userZoom = camera.userZoom) => {
     const alive = actors.filter((actor) => actor && actor.health > 0);
     if (alive.length <= 1) {
       const actor = alive[0] || player;
-      return { x: actor.x + actor.width / 2, y: actor.y + actor.height / 2, zoom: CAMERA_LIMITS.soloZoom };
+      return {
+        x: actor.x + actor.width / 2,
+        y: actor.y + actor.height / 2,
+        zoom: clamp(CAMERA_LIMITS.soloZoom * userZoom, CAMERA_LIMITS.minZoom, CAMERA_LIMITS.maxZoom),
+      };
     }
     const centers = alive.map((actor) => ({ x: actor.x + actor.width / 2, y: actor.y + actor.height / 2 }));
     const minX = Math.min(...centers.map((point) => point.x));
@@ -838,7 +897,7 @@
     return {
       x: (minX + maxX) / 2,
       y: (minY + maxY) / 2,
-      zoom: clamp(Math.min(zoomX, zoomY), CAMERA_LIMITS.minZoom, CAMERA_LIMITS.maxZoom),
+      zoom: clamp(Math.min(zoomX, zoomY) * userZoom, CAMERA_LIMITS.minZoom, CAMERA_LIMITS.maxZoom),
     };
   };
 
@@ -847,7 +906,7 @@
     const halfWidth = WORLD.width / (2 * goal.zoom);
     const halfHeight = WORLD.height / (2 * goal.zoom);
     camera.targetX = clamp(goal.x, halfWidth, WORLD.width - halfWidth);
-    camera.targetY = Math.min(goal.y + 34, WORLD.height - halfHeight);
+    camera.targetY = clamp(goal.y + 34, halfHeight, WORLD.height - halfHeight);
     camera.targetZoom = goal.zoom;
     const positionBlend = 1 - Math.exp(-7 * dt);
     const zoomBlend = 1 - Math.exp(-3.5 * dt);
@@ -859,8 +918,8 @@
   const update = (dt) => {
     simulationTick += 1;
     const actions = playerActions();
-    updateActor(player, actions, dt);
-    if (rival) updateActor(rival, aiActions(rival), dt);
+    updateActor(player, aiActions(player), dt);
+    if (rival) updateActor(rival, actions, dt);
     resolveActors();
     updateProjectiles(dt);
     updateParticles(dt);
@@ -873,23 +932,25 @@
   };
 
   const drawCloud = (cloud) => {
-    const pattern = CLOUD_PATTERNS[cloud.design];
+    if (!cloudSprite) return;
     const parallax = 0.02 + cloud.depth * 0.018;
-    const zoomInfluence = 1 + (camera.zoom - 1) * (0.05 + cloud.depth * 0.035);
-    const unit = 4 * cloud.scale * zoomInfluence;
     const x = cloud.x - (camera.x - WORLD.width / 2) * parallax;
     const y = cloud.y - (camera.y - WORLD.height / 2) * parallax * 0.6;
-    const palette = { 1: "#d4eff8", 2: "#f7fdff", 3: "#a9d3e4" };
+    const size = 210 * cloud.scale * (1 + (camera.zoom - 1) * 0.025);
     ctx.save();
-    ctx.globalAlpha = 0.72 + cloud.depth * 0.1;
-    for (let row = 0; row < pattern.length; row += 1) {
-      for (let column = 0; column < pattern[row].length; column += 1) {
-        const shade = pattern[row][column];
-        if (shade === " ") continue;
-        ctx.fillStyle = palette[shade];
-        ctx.fillRect(Math.round(x + column * unit), Math.round(y + row * unit), Math.ceil(unit), Math.ceil(unit));
-      }
-    }
+    ctx.globalAlpha = 0.7 + cloud.depth * 0.1;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(
+      cloudSprite,
+      cloud.design * CLOUD_SHEET.cell,
+      0,
+      CLOUD_SHEET.cell,
+      CLOUD_SHEET.cell,
+      Math.round(x - size / 2),
+      Math.round(y - size * 0.38),
+      size,
+      size,
+    );
     ctx.restore();
   };
 
@@ -898,57 +959,51 @@
     const x = block.x;
     const y = block.y;
     if (block.type === "floatingBrick") {
-      ctx.fillStyle = "#5a2c26";
+      ctx.fillStyle = "#4a1b21";
       ctx.fillRect(x, y, 40, 40);
-      ctx.fillStyle = "#e87535";
-      ctx.fillRect(x + 3, y + 3, 34, 34);
-      ctx.fillStyle = "#ffad55";
-      ctx.fillRect(x + 5, y + 5, 30, 5);
-      ctx.fillStyle = "#8f3f2b";
-      ctx.fillRect(x + 18, y + 3, 4, 15);
-      ctx.fillRect(x + 3, y + 18, 34, 4);
-      ctx.fillRect(x + 9, y + 22, 4, 15);
-      ctx.fillRect(x + 29, y + 22, 4, 15);
+      ctx.fillStyle = "#d65b2f";
+      ctx.fillRect(x + 2, y + 4, 36, 33);
+      ctx.fillStyle = "#f3a33e";
+      ctx.fillRect(x + 2, y + 2, 36, 5);
+      ctx.fillStyle = "#70251f";
+      ctx.fillRect(x, y + 18, 40, 3);
+      ctx.fillRect(x + 18, y + 4, 3, 14);
+      ctx.fillRect(x + 8, y + 21, 3, 16);
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.fillRect(x + 5, y + 9, 10, 3);
     } else {
-      ctx.fillStyle = "#2d2830";
+      ctx.fillStyle = "#5b1f18";
       ctx.fillRect(x, y, 40, 40);
-      ctx.fillStyle = "#71513d";
+      ctx.fillStyle = "#ed7432";
       ctx.fillRect(x + 3, y + 3, 34, 34);
-      ctx.fillStyle = "#9b7657";
-      ctx.fillRect(x + 5, y + 5, 30, 6);
-      ctx.fillStyle = "#44333a";
-      ctx.fillRect(x + 3, y + 19, 34, 4);
-      ctx.fillRect(x + 17, y + 3, 4, 16);
-      ctx.fillRect(x + 9, y + 23, 4, 14);
-      ctx.fillRect(x + 29, y + 23, 4, 14);
+      ctx.fillStyle = "#ffad4a";
+      ctx.fillRect(x + 4, y + 4, 32, 5);
+      ctx.fillStyle = "#98331f";
+      ctx.fillRect(x + 4, y + 31, 32, 5);
+      ctx.fillRect(x + 3, y + 10, 4, 20);
+      ctx.fillStyle = "rgba(255,255,255,0.2)";
+      ctx.fillRect(x + 9, y + 12, 15, 3);
     }
     const damage = 1 - block.hp / block.maxHp;
     if (damage > 0) {
-      ctx.strokeStyle = "rgba(20,15,18,.8)";
-      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = "#3f1720";
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.moveTo(x + 20, y + 7);
-      ctx.lineTo(x + 17, y + 15 + damage * 6);
-      ctx.lineTo(x + 24, y + 24);
-      if (damage > 0.45) ctx.lineTo(x + 18, y + 34);
+      ctx.moveTo(x + 21, y + 4);
+      ctx.lineTo(x + 17, y + 13);
+      ctx.lineTo(x + 23, y + 20);
+      if (damage >= 0.45) {
+        ctx.lineTo(x + 14, y + 31);
+        ctx.moveTo(x + 23, y + 20);
+        ctx.lineTo(x + 30, y + 29);
+      }
+      if (damage >= 0.72) {
+        ctx.moveTo(x + 5, y + 17);
+        ctx.lineTo(x + 14, y + 11);
+        ctx.lineTo(x + 20, y + 19);
+      }
       ctx.stroke();
     }
-  };
-
-  const drawFallbackActor = (actor, renderX, renderY) => {
-    ctx.save();
-    ctx.translate(renderX + actor.width / 2, renderY + actor.height);
-    if (actor.facing < 0) ctx.scale(-1, 1);
-    ctx.fillStyle = actor.isAi ? "#202b3e" : "#182438";
-    ctx.fillRect(-13, -62, 26, 40);
-    ctx.fillStyle = "#d79a68";
-    ctx.beginPath();
-    ctx.arc(0, -74, 11, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#111827";
-    ctx.fillRect(-12, -22, 9, 22);
-    ctx.fillRect(3, -22, 9, 22);
-    ctx.restore();
   };
 
   const drawActor = (actor, alpha, time) => {
@@ -956,28 +1011,31 @@
     if (actor.invulnerable > 0 && Math.floor(actor.invulnerable * 24) % 2 === 0) return;
     const x = lerp(actor.prevX, actor.x, alpha);
     const y = lerp(actor.prevY, actor.y, alpha);
-    if (!fighterSprite) {
-      drawFallbackActor(actor, x, y);
-      return;
-    }
-    const idleBreath = 1 + Math.sin(time * 2.2 + (actor.isAi ? 1.2 : 0)) * 0.004;
-    const height = ACTOR.visualHeight * idleBreath;
-    const width = height * fighterSprite.aspect;
+    if (!solSprite) return;
+    const pose = SOL_POSES[actor.animationState] ?? SOL_POSES.idle;
+    const sourceX = (pose % SOL_SHEET.columns) * SOL_SHEET.cell;
+    const sourceY = Math.floor(pose / SOL_SHEET.columns) * SOL_SHEET.cell;
+    const idleBreath = actor.animationState === "idle"
+      ? 1 + Math.sin(time * 2.2 + (actor.id === "sol" ? 1.2 : 0)) * 0.004
+      : 1;
+    const frameSize = ACTOR.spriteFrameSize * idleBreath;
     ctx.save();
     ctx.translate(x + actor.width / 2, y + actor.height);
     if (actor.facing < 0) ctx.scale(-1, 1);
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(fighterSprite.canvas, -width / 2, -height, width, height);
+    if (actor.id !== "sol") ctx.filter = "hue-rotate(170deg) saturate(.82) brightness(1.08)";
+    ctx.drawImage(
+      solSprite,
+      sourceX,
+      sourceY,
+      SOL_SHEET.cell,
+      SOL_SHEET.cell,
+      -frameSize / 2,
+      -frameSize + 6,
+      frameSize,
+      frameSize,
+    );
     ctx.restore();
-    if (actor.isAi) {
-      ctx.fillStyle = "#d94d4d";
-      ctx.beginPath();
-      ctx.moveTo(x + actor.width / 2, y - 8);
-      ctx.lineTo(x + actor.width / 2 - 5, y - 16);
-      ctx.lineTo(x + actor.width / 2 + 5, y - 16);
-      ctx.closePath();
-      ctx.fill();
-    }
   };
 
   const drawProjectile = (shot, alpha) => {
@@ -1011,44 +1069,41 @@
     ctx.globalAlpha = 1;
   };
 
-  const heartPath = (context, x, y, size) => {
-    context.beginPath();
-    context.moveTo(x, y + size * 0.28);
-    context.bezierCurveTo(x, y, x - size * 0.5, y, x - size * 0.5, y + size * 0.32);
-    context.bezierCurveTo(x - size * 0.5, y + size * 0.62, x, y + size * 0.88, x, y + size);
-    context.bezierCurveTo(x, y + size * 0.88, x + size * 0.5, y + size * 0.62, x + size * 0.5, y + size * 0.32);
-    context.bezierCurveTo(x + size * 0.5, y, x, y, x, y + size * 0.28);
-    context.closePath();
+  const drawHeartShape = (x, y, color) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(x + 3, y, 7, 7);
+    ctx.fillRect(x + 15, y, 7, 7);
+    ctx.fillRect(x, y + 5, 25, 8);
+    ctx.fillRect(x + 4, y + 13, 17, 6);
+    ctx.fillRect(x + 8, y + 19, 9, 5);
+  };
+
+  const drawHeartHalf = (x, y, side, color) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(side === "left" ? x : x + 12.5, y - 1, 12.5, 26);
+    ctx.clip();
+    drawHeartShape(x, y, color);
+    ctx.restore();
   };
 
   const drawHearts = (actor, mirrored) => {
     if (!actor) return;
-    const size = 24;
-    const gap = 31;
     for (let index = 0; index < 5; index += 1) {
-      const value = clamp(actor.health - index * 2, 0, 2);
-      const x = mirrored ? WORLD.width - 35 - index * gap : 35 + index * gap;
-      const y = 24;
-      ctx.save();
-      heartPath(ctx, x, y, size);
-      ctx.fillStyle = "rgba(7,17,31,.38)";
-      ctx.fill();
-      if (value > 0) {
-        ctx.save();
-        const fillWidth = size * (value / 2);
-        if (mirrored) ctx.rect(x + size / 2 - fillWidth, y - 2, fillWidth, size + 6);
-        else ctx.rect(x - size / 2, y - 2, fillWidth, size + 6);
-        ctx.clip();
-        heartPath(ctx, x, y, size);
-        ctx.fillStyle = actor.heartFlash > 0 && Math.floor(actor.heartFlash * 22) % 2 === 0 ? "#ffffff" : "#ef4452";
-        ctx.fill();
-        ctx.restore();
+      const units = clamp(actor.health - index * 2, 0, 2);
+      const x = mirrored ? WORLD.width - 47 - index * 31 : 22 + index * 31;
+      const y = 23;
+      const firstHalf = mirrored ? "right" : "left";
+      const secondHalf = mirrored ? "left" : "right";
+      drawHeartShape(x, y, "rgba(7,17,31,.3)");
+      if (units >= 1) drawHeartHalf(x, y, firstHalf, "#e9424d");
+      if (units >= 2) drawHeartHalf(x, y, secondHalf, "#e9424d");
+      if (units > 0) {
+        ctx.fillStyle = actor.heartFlash > 0 && Math.floor(actor.heartFlash * 22) % 2 === 0
+          ? "#ffffff"
+          : "#ff9da4";
+        ctx.fillRect(x + (mirrored ? 16 : 4), y + 4, 5, 4);
       }
-      heartPath(ctx, x, y, size);
-      ctx.strokeStyle = "rgba(7,17,31,.72)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
     }
   };
 
@@ -1072,26 +1127,6 @@
 
     drawHearts(player, false);
     if (rival) drawHearts(rival, true);
-    ctx.textAlign = "center";
-    ctx.fillStyle = "rgba(7,17,31,.72)";
-    ctx.font = "900 12px 'Courier New', monospace";
-    ctx.fillText(`MVL · ${VERSION}`, WORLD.width / 2, 24);
-    ctx.font = "900 10px 'Courier New', monospace";
-    ctx.fillText(`${Math.round(ACTOR.visualHeight * camera.zoom)} PX`, WORLD.width / 2, 41);
-    if (!rival) {
-      ctx.fillStyle = "rgba(7,17,31,.58)";
-      ctx.fillText("ENTER · INVOCAR IA", WORLD.width / 2, 62);
-    }
-    const winner = player.health <= 0 ? "RIVAL GANA" : rival && rival.health <= 0 ? "GANASTE" : "";
-    if (winner) {
-      ctx.fillStyle = "rgba(7,17,31,.72)";
-      ctx.fillRect(WORLD.width / 2 - 210, WORLD.height / 2 - 55, 420, 110);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "900 40px 'Courier New', monospace";
-      ctx.fillText(winner, WORLD.width / 2, WORLD.height / 2 + 5);
-      ctx.font = "900 11px 'Courier New', monospace";
-      ctx.fillText("ESC · REINICIAR", WORLD.width / 2, WORLD.height / 2 + 34);
-    }
     if (previewNeedsDraw && activePanel === "character") drawCharacterPreview(time);
   };
 
@@ -1106,11 +1141,20 @@
     previewContext.fillRect(0, 0, characterPreview.width, characterPreview.height);
     previewContext.fillStyle = "#456b82";
     previewContext.fillRect(0, 386, characterPreview.width, 3);
-    if (fighterSprite) {
-      const height = 340 * (1 + Math.sin(time * 2.2) * 0.003);
-      const width = height * fighterSprite.aspect;
+    if (solSprite) {
+      const frameSize = 350 * (1 + Math.sin(time * 2.2) * 0.003);
       previewContext.imageSmoothingEnabled = true;
-      previewContext.drawImage(fighterSprite.canvas, (characterPreview.width - width) / 2, 388 - height, width, height);
+      previewContext.drawImage(
+        solSprite,
+        0,
+        0,
+        SOL_SHEET.cell,
+        SOL_SHEET.cell,
+        (characterPreview.width - frameSize) / 2,
+        390 - frameSize,
+        frameSize,
+        frameSize,
+      );
     } else {
       previewContext.fillStyle = "#07111f";
       previewContext.textAlign = "center";
@@ -1120,65 +1164,26 @@
     previewNeedsDraw = false;
   };
 
-  const buildTransparentSprite = (image) => {
-    if (!document.createElement) return;
-    const source = document.createElement("canvas");
-    source.width = image.naturalWidth || image.width;
-    source.height = image.naturalHeight || image.height;
-    const sourceContext = source.getContext("2d", { willReadFrequently: true });
-    sourceContext.drawImage(image, 0, 0);
-    const pixels = sourceContext.getImageData(0, 0, source.width, source.height);
-    const data = pixels.data;
-    let minX = source.width;
-    let minY = source.height;
-    let maxX = 0;
-    let maxY = 0;
-    for (let y = 0; y < source.height; y += 1) {
-      for (let x = 0; x < source.width; x += 1) {
-        const offset = (y * source.width + x) * 4;
-        const r = data[offset];
-        const g = data[offset + 1];
-        const b = data[offset + 2];
-        const maximum = Math.max(r, g, b);
-        const minimum = Math.min(r, g, b);
-        const neutral = maximum - minimum < 22;
-        if (neutral && minimum > 216) data[offset + 3] = 0;
-        else if (neutral && minimum > 188) data[offset + 3] = Math.round(255 * (216 - minimum) / 28);
-        if (data[offset + 3] > 18) {
-          minX = Math.min(minX, x);
-          minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x);
-          maxY = Math.max(maxY, y);
-        }
-      }
-    }
-    sourceContext.putImageData(pixels, 0, 0);
-    const padding = 4;
-    minX = Math.max(0, minX - padding);
-    minY = Math.max(0, minY - padding);
-    maxX = Math.min(source.width - 1, maxX + padding);
-    maxY = Math.min(source.height - 1, maxY + padding);
-    const output = document.createElement("canvas");
-    output.width = Math.max(1, maxX - minX + 1);
-    output.height = Math.max(1, maxY - minY + 1);
-    output.getContext("2d").drawImage(source, minX, minY, output.width, output.height, 0, 0, output.width, output.height);
-    fighterSprite = { canvas: output, aspect: output.width / output.height };
-    loadingMessage.hidden = true;
+  const assetLoaded = () => {
+    assetsRemaining = Math.max(0, assetsRemaining - 1);
+    if (assetsRemaining === 0) loadingMessage.hidden = true;
     previewNeedsDraw = true;
   };
 
-  const loadFighter = () => {
+  const loadAssets = () => {
     if (typeof Image === "undefined") {
       loadingMessage.hidden = true;
       return;
     }
-    const image = new Image();
-    image.addEventListener("load", () => buildTransparentSprite(image));
-    image.addEventListener("error", () => {
-      loadingMessage.hidden = true;
-      showToast("NO SE PUDO CARGAR EL SPRITE BASE", 3);
-    });
-    image.src = "/assets/fighter-idle.png";
+    const solImage = new Image();
+    solImage.addEventListener("load", () => { solSprite = solImage; assetLoaded(); });
+    solImage.addEventListener("error", assetLoaded);
+    solImage.src = "/assets/sol-poses.png";
+
+    const cloudImage = new Image();
+    cloudImage.addEventListener("load", () => { cloudSprite = cloudImage; assetLoaded(); });
+    cloudImage.addEventListener("error", assetLoaded);
+    cloudImage.src = "/assets/cloud9.png";
   };
 
   const pollGamepad = () => {
@@ -1282,6 +1287,13 @@
     canvas.focus();
   });
 
+  canvas.addEventListener("wheel", (event) => {
+    if (phase !== "playing") return;
+    const factor = Math.exp(-event.deltaY * 0.0012);
+    camera.userZoom = clamp(camera.userZoom * factor, 0.55, 1.45);
+    event.preventDefault();
+  }, { passive: false });
+
   let lastTime = 0;
   let accumulator = 0;
   const frame = (timestamp) => {
@@ -1303,7 +1315,7 @@
     requestAnimationFrame(frame);
   };
 
-  window.__MVL_DEBUG__ = Object.freeze({
+  const debugApi = Object.freeze({
     version: () => VERSION,
     fixedStep: () => WORLD.fixedStep,
     inputActions: () => [...INPUT_ACTIONS],
@@ -1311,13 +1323,23 @@
     cameraGoalFor,
     audioPanFor: (worldX) => audio.panFor(worldX),
     spawnRival,
+    spawnVisitor: spawnRival,
     reset: resetGame,
     radialExplosion,
+    damageSol: (amount = 1) => damageActor(
+      player,
+      amount,
+      rival ? rival.x + rival.width / 2 : player.x + player.width + 40,
+      false,
+      rival?.id || "visitor",
+    ),
     snapshot: () => ({
       phase,
       simulationTick,
       wind,
       camera: { ...camera },
+      sol: player ? { ...player } : null,
+      visitor: rival ? { ...rival } : null,
       player: player ? { ...player } : null,
       rival: rival ? { ...rival } : null,
       cloudCount: clouds.length,
@@ -1327,9 +1349,11 @@
       projectiles: projectiles.map((shot) => ({ ...shot })),
     }),
   });
+  window.__ERROR101_DEBUG__ = debugApi;
+  window.__MVL_DEBUG__ = debugApi;
 
   renderControls();
   resetGame();
-  loadFighter();
+  loadAssets();
   requestAnimationFrame(frame);
 })();

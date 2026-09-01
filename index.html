@@ -3,20 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="MVL Beta 1.00: nueva base del juego, reconstruida desde cero alrededor del personaje, la cámara dinámica y un combate determinista a 60 Hz." />
+    <meta name="description" content="Error 101 Beta 1.01: el universo digital de Sol, con simulación determinista a 60 Hz." />
     <meta name="theme-color" content="#75aadb" />
-    <title>MVL — BETA 1.00</title>
+    <title>ERROR 101 — BETA 1.01</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main id="gameShell" class="game-shell" aria-label="MVL BETA 1.00">
-      <canvas id="game" width="1280" height="720" tabindex="0" aria-label="Arena jugable de MVL">
-        Tu navegador necesita compatibilidad con Canvas 2D para ejecutar MVL.
+    <main id="gameShell" class="game-shell" aria-label="Error 101 BETA 1.01">
+      <canvas id="game" width="1280" height="720" tabindex="0" aria-label="Universo jugable de Error 101">
+        Tu navegador necesita compatibilidad con Canvas 2D para ejecutar Error 101.
       </canvas>
 
       <section id="pauseLayer" class="pause-layer" hidden aria-label="Pausa">
         <div class="pause-card" data-panel="pause">
-          <p class="eyebrow">MVL · BETA 1.00</p>
+          <p class="eyebrow">ERROR 101 · BETA 1.01</p>
           <h1>PAUSA</h1>
           <div class="menu-stack">
             <button id="continueButton" class="menu-button primary" type="button">CONTINUAR</button>
@@ -28,16 +28,16 @@
 
         <div class="pause-card character-card" data-panel="character" hidden>
           <button class="back-button" type="button" data-open-panel="pause" aria-label="Volver">←</button>
-          <p class="eyebrow">BASE VISUAL APROBADA</p>
-          <h2>PERSONAJE</h2>
-          <canvas id="characterPreview" width="360" height="420" aria-label="Vista previa del personaje"></canvas>
+          <p class="eyebrow">PROTAGONISTA</p>
+          <h2>SOL</h2>
+          <canvas id="characterPreview" width="360" height="420" aria-label="Vista previa de Sol"></canvas>
           <dl class="character-data">
-            <div><dt>MODELO</dt><dd>Masculino</dd></div>
-            <div><dt>MUSCULATURA</dt><dd>Atlética</dd></div>
-            <div><dt>VESTIMENTA</dt><dd>Bóxer negro</dd></div>
-            <div><dt>POSE</dt><dd>Idle neutral</dd></div>
+            <div><dt>ORIGEN</dt><dd>Digital</dd></div>
+            <div><dt>CONTROL</dt><dd>Autónomo</dd></div>
+            <div><dt>CONDUCTA</dt><dd>Neutral</dd></div>
+            <div><dt>COLOR</dt><dd>Azul Sol</dd></div>
           </dl>
-          <p class="panel-note">Primero aprobamos el cuerpo en movimiento. La personalización se incorpora después, sin alterar la hitbox.</p>
+          <p class="panel-note">Sol habita este mundo por cuenta propia. Si recibe daño, se defenderá.</p>
         </div>
 
         <div class="pause-card controls-card" data-panel="controls" hidden>
@@ -65,7 +65,7 @@
         </div>
       </div>
 
-      <p id="loadingMessage" class="loading-message">Preparando MVL BETA 1.00…</p>
+      <p id="loadingMessage" class="loading-message">INICIANDO ERROR 101…</p>
       <p id="toast" class="toast" aria-live="polite"></p>
       <p id="gameStatus" class="sr-only" aria-live="polite"></p>
     </main>

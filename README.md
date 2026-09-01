@@ -1,25 +1,57 @@
-# MVL — BETA 1.00
+# ERROR 101 — BETA 1.01
 
-Reconstrucción limpia del prototipo MVL. La Beta 0.9 permanece preservada en el historial; esta versión conserva únicamente la definición del escenario y vuelve a construir personaje, cámara, controles, combate y audio.
+Primer capítulo del universo digital de Sol, construido sobre la base mecánica de MVL.
 
-La documentación funcional está en [`worker/source/README.md`](worker/source/README.md).
+## Alcance
 
-## Desarrollo
+- Escenario original de 32 × 18 con 36 ladrillos flotantes y dos filas de 64 bloques de suelo.
+- Sol aparece desde el inicio, se mueve mediante IA y conserva exclusivamente su azul original.
+- Sol es neutral hasta recibir daño; entonces identifica al agresor y se defiende durante un período limitado.
+- El visitante controlable aparece con `Enter` y utiliza los ocho inputs definidos.
+- Hoja raster de nueve poses separada del motor y renderizada entre 100 y 250 px mediante cámara dinámica.
+- 10 HP representados mediante cinco corazones, con mitades correctamente espejadas.
+- Zoom manual con la rueda del mouse, siempre enfocado en los personajes presentes y contenido por los límites reales del mapa.
+- Pausa con `Esc`: continuar, reiniciar, personaje y controles.
+- Ocho acciones lógicas configurables: cuatro direcciones, ataque corto, ataque largo, cobertura y correr.
+- Teclado, touch y joystick estándar de PlayStation mediante Gamepad API.
+- Ataque corto y cobertura tienen entrada reservada, pero todavía no aplican reglas de combate.
 
-Fuente pública:
+## Motor y cámara
 
-- `worker/source/index.html`
-- `worker/source/style.css`
-- `worker/source/game.js`
-- `worker/source/assets/fighter-idle.png`
+- Simulación fija a 60 Hz.
+- Render desacoplado y apto para pantallas de 60/120 Hz.
+- Cámara local con zoom suave: el personaje se muestra entre 100 y 250 px.
+- El estado del mundo no depende del render, la cámara ni el audio.
+- Estado numerado por `simulationTick`, preparado para snapshots y futura sincronización online.
 
-Regenerar y comprobar el Worker:
+## Combate conservado
 
-```bash
-node scripts/embed-source.mjs
-node tests/headless.cjs
-npm run build
-npm run validate
-```
+- Máximo de dos proyectiles activos por personaje.
+- Rebote superior, inferior y lateral, pérdida de energía y desaparición al octavo rebote.
+- Impacto de proyectil: 1 HP.
+- Pisotón: 3 HP y rebote; un objetivo ya agachado bloquea el daño.
+- Colisión sólida entre personajes.
+- Choque entre proyectiles: ambos desaparecen y generan una explosión radial que repele sin causar daño.
+- Caer al vacío reduce la salud a cero.
 
-La partida avanza a 60 pasos lógicos por segundo. La presentación puede dibujarse a 60 o 120 FPS sin modificar el resultado del combate, base necesaria para el futuro PvP online.
+## Cloud 9
+
+El cielo `#75AADB` utiliza exactamente tres diseños de nube y tres ejemplares de cada diseño: `3 × 3 = 9`. Las posiciones, profundidades y velocidades se distribuyen con una semilla reproducible; todas respetan el mismo viento.
+
+## Audio
+
+Los sonidos sintetizados de salto, disparo, impacto, pisotón, choque y destrucción usan paneo estéreo según su posición respecto de la cámara. La interfaz permanece centrada.
+
+## Controles predeterminados
+
+- `A/D`: izquierda/derecha.
+- `W`: saltar.
+- `S`: agacharse y desplazarse lentamente.
+- `F`: ataque corto reservado.
+- `E`: ataque largo/proyectil.
+- `Q`: cobertura reservada.
+- `Shift izquierdo`: correr.
+- `Enter`: incorporar al visitante controlable.
+- `Esc`: pausa.
+
+Joystick: stick o cruceta, `✕` como salto alternativo, `□` corto, `○` largo, `L1` cobertura y `R1` correr.
