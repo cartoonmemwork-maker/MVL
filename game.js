@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const VERSION = "BETA 1.02";
+  const VERSION = "BETA 1.04";
+  const ANIMATION_STANDARD_FRAMES = 6;
   const WORLD = Object.freeze({
     width: 1280,
     height: 720,
@@ -13,6 +14,13 @@
     maxCatchUpSteps: 5,
   });
   const CAMERA_LIMITS = Object.freeze({ minZoom: 1, maxZoom: 2.5, soloZoom: 2 });
+  const CLOUD_DIMENSIONS = Object.freeze([
+    Object.freeze({ width: 119, height: 78 }),
+    Object.freeze({ width: 158, height: 94 }),
+    Object.freeze({ width: 216, height: 90 }),
+  ]);
+  const CLOUD_OPACITY = Object.freeze({ min: 0.48, max: 0.92 });
+  const WIND_LIMITS = Object.freeze({ minSpeed: 10, maxSpeed: 86, gestureScale: 0.72 });
   const ACTOR = Object.freeze({
     width: 34,
     standingHeight: 80,
@@ -99,13 +107,13 @@
     G: Object.freeze({ type: "groundBrick", maxHp: 6 }),
   });
   const SPRITE_LAYOUTS = Object.freeze({
-    locomotion: Object.freeze({ columns: 6, rows: 3 }),
+    locomotion: Object.freeze({ columns: ANIMATION_STANDARD_FRAMES, rows: 3 }),
     actions: Object.freeze({ columns: 4, rows: 2, referenceFrames: [0, 1, 4, 5, 6] }),
   });
   const ANIMATIONS = Object.freeze({
-    idle: Object.freeze({ sheet: "locomotion", row: 0, frames: 6, fps: 1.7, height: 100 }),
-    walk: Object.freeze({ sheet: "locomotion", row: 1, frames: 6, fps: 9, height: 100 }),
-    run: Object.freeze({ sheet: "locomotion", row: 2, frames: 6, fps: 13, height: 100 }),
+    idle: Object.freeze({ sheet: "locomotion", row: 0, frames: ANIMATION_STANDARD_FRAMES, fps: 1.7, height: 100 }),
+    walk: Object.freeze({ sheet: "locomotion", row: 1, frames: ANIMATION_STANDARD_FRAMES, fps: 9, stride: 148, height: 100 }),
+    run: Object.freeze({ sheet: "locomotion", row: 2, frames: ANIMATION_STANDARD_FRAMES, fps: 13, stride: 184, height: 100 }),
     jump: Object.freeze({ sheet: "actions", row: 0, column: 0, height: 100 }),
     fall: Object.freeze({ sheet: "actions", row: 0, column: 1, height: 100 }),
     crouch: Object.freeze({ sheet: "actions", row: 0, column: 2, height: 100 }),
@@ -118,6 +126,19 @@
   const CHARACTER_PALETTES = Object.freeze({
     sol: Object.freeze({ core: "#e9fbff", mid: "#58ddff", edge: "#176fff", fade: "rgba(23,111,255,0)", particle: "#77e5ff" }),
     visitor: Object.freeze({ core: "#fff7df", mid: "#ffb45e", edge: "#ff5c45", fade: "rgba(255,92,69,0)", particle: "#ffc078" }),
+  });
+  const MONITOR_LAYOUTS = Object.freeze({
+    idle: Object.freeze({ x: 0, y: -66, width: 43, height: 25, rotation: 0 }),
+    walk: Object.freeze({ x: 1, y: -66, width: 43, height: 25, rotation: 0 }),
+    run: Object.freeze({ x: 2, y: -63, width: 42, height: 24, rotation: 0 }),
+    jump: Object.freeze({ x: 4, y: -66, width: 43, height: 25, rotation: 0 }),
+    fall: Object.freeze({ x: 3, y: -64, width: 43, height: 25, rotation: 0 }),
+    crouch: Object.freeze({ x: 1, y: -42, width: 47, height: 23, rotation: 0 }),
+    fastFall: Object.freeze({ x: 1, y: -38, width: 49, height: 21, rotation: 0 }),
+    fire: Object.freeze({ x: -2, y: -65, width: 43, height: 25, rotation: 0 }),
+    airFire: Object.freeze({ x: 0, y: -62, width: 43, height: 25, rotation: 0 }),
+    hurt: Object.freeze({ x: 3, y: -59, width: 43, height: 24, rotation: -0.17 }),
+    stomp: Object.freeze({ x: 2, y: -31, width: 50, height: 20, rotation: 0 }),
   });
 
   const canvas = document.querySelector("#game");
@@ -213,7 +234,10 @@
   let projectiles = [];
   let particles = [];
   let clouds = [];
-  let wind = 1;
+  let wind = { x: 0, y: 0 };
+  let worldSeed = 0;
+  let resetSequence = 0;
+  let interaction = null;
   let toastTime = 0;
   let spriteSheets = Object.create(null);
   let cloudSprites = [null, null, null];
@@ -247,6 +271,12 @@
   };
 
   const setPaused = (paused) => {
+    if (paused && interaction) {
+      if (interaction.type === "actor" || interaction.type === "block" || interaction.type === "cloud") {
+        interaction.target.dragged = false;
+      }
+      interaction = null;
+    }
     phase = paused ? "paused" : "playing";
     pauseLayer.hidden = !paused;
     if (paused) setPanel("pause");
@@ -282,9 +312,12 @@
     animationState: "idle",
     previousAnimationState: "idle",
     animationTime: 0,
+    gaitDistance: 0,
     blinkTime: 0,
     nextBlink: 2.2 + (id === "sol" ? 0 : 0.8),
     fastFalling: false,
+    dragged: false,
+    deathBurst: false,
     aiTimer: 0,
     aiFireTimer: 0.55,
     aiWanderTimer: 0,
@@ -319,35 +352,51 @@
     return result;
   };
 
-  const createCloud9 = (seed = 0x4d564c01) => {
+  const nextWorldSeed = () => {
+    resetSequence += 1;
+    return ((Date.now() >>> 0) ^ Math.imul(resetSequence, 2654435761) ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+  };
+
+  const createCloud9 = (seed = nextWorldSeed()) => {
     const rng = createRng(seed);
-    wind = rng() > 0.5 ? 1 : -1;
+    const windAngle = rng() * Math.PI * 2;
+    const windSpeed = WIND_LIMITS.minSpeed + rng() * (WIND_LIMITS.maxSpeed - WIND_LIMITS.minSpeed);
+    wind = {
+      x: Math.cos(windAngle) * windSpeed,
+      y: Math.sin(windAngle) * windSpeed,
+    };
     const result = [];
     for (let design = 0; design < 3; design += 1) {
       for (let copy = 0; copy < 3; copy += 1) {
         const depth = copy;
+        const scale = 0.72 + depth * 0.18 + rng() * 0.13;
+        const visualHeight = CLOUD_DIMENSIONS[design].height * scale;
         result.push({
           design,
           copy,
           depth,
           x: rng() * WORLD.width,
           y: 54 + rng() * 280,
-          scale: 0.72 + depth * 0.18 + rng() * 0.13,
-          speed: wind * (7 + depth * 7 + rng() * 3),
+          scale,
+          opacity: lerp(CLOUD_OPACITY.min, CLOUD_OPACITY.max, rng()),
+          windFactor: 90 / visualHeight,
+          dragged: false,
         });
       }
     }
     return result;
   };
 
-  const resetGame = () => {
+  const resetGame = (seed = nextWorldSeed()) => {
     simulationTick = 0;
+    worldSeed = seed >>> 0;
     blocks = createBlocks();
     player = createActor("sol", 170, true);
     rival = null;
     projectiles = [];
     particles = [];
-    clouds = createCloud9(0x4d564c01);
+    clouds = createCloud9(worldSeed);
+    interaction = null;
     camera.x = WORLD.width / 2;
     camera.y = WORLD.height / 2;
     camera.zoom = CAMERA_LIMITS.minZoom;
@@ -373,6 +422,199 @@
   const supportAt = (x, y) => activeBlocks().some((block) =>
     x >= block.x && x <= block.x + block.width && y >= block.y - 3 && y <= block.y + 7,
   );
+
+  const pointInRect = (point, rect) =>
+    point.x >= rect.x && point.x <= rect.x + rect.width &&
+    point.y >= rect.y && point.y <= rect.y + rect.height;
+
+  const canvasPointFromEvent = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX ?? rect.left) - rect.left) * WORLD.width / Math.max(1, rect.width),
+      y: ((event.clientY ?? rect.top) - rect.top) * WORLD.height / Math.max(1, rect.height),
+    };
+  };
+
+  const worldPointFromCanvas = (point) => ({
+    x: camera.x + (point.x - WORLD.width / 2) / camera.zoom,
+    y: camera.y + (point.y - WORLD.height / 2) / camera.zoom,
+  });
+
+  const actorGrabBounds = (actor) => ({
+    x: actor.x + actor.width / 2 - 54,
+    y: actor.y + actor.height - 102,
+    width: 108,
+    height: 104,
+  });
+
+  const cloudScreenGeometry = (cloud) => {
+    const parallax = 0.02 + cloud.depth * 0.018;
+    const base = CLOUD_DIMENSIONS[cloud.design];
+    const x = cloud.x - (camera.x - WORLD.width / 2) * parallax;
+    const y = cloud.y - (camera.y - WORLD.height / 2) * parallax * 0.6;
+    const height = base.height * cloud.scale * (1 + (camera.zoom - 1) * 0.025);
+    const width = height * base.width / base.height;
+    return { x, y, width, height, parallax };
+  };
+
+  const blockPlacementIsFree = (target, x, y) => {
+    const candidate = { x, y, width: target.width, height: target.height };
+    if (blocks.some((block) => block !== target && block.active && overlap(candidate, block))) return false;
+    if ([player, rival].some((actor) => actor && actor.health > 0 && overlap(candidate, actor))) return false;
+    return true;
+  };
+
+  const moveDraggedActor = (actor, targetX, targetY) => {
+    const destinationX = clamp(targetX, 0, WORLD.width - actor.width);
+    const destinationY = clamp(targetY, 0, WORLD.height - actor.height);
+    const deltaX = destinationX - actor.x;
+    const deltaY = destinationY - actor.y;
+    const steps = Math.max(1, Math.ceil(Math.max(Math.abs(deltaX), Math.abs(deltaY)) / 6));
+    const stepX = deltaX / steps;
+    const stepY = deltaY / steps;
+    for (let index = 0; index < steps; index += 1) {
+      const candidateX = clamp(actor.x + stepX, 0, WORLD.width - actor.width);
+      const horizontal = { x: candidateX, y: actor.y, width: actor.width, height: actor.height };
+      const other = otherActor(actor);
+      if (!rectHitsBlock(horizontal) && (!other || other.health <= 0 || !overlap(horizontal, other))) actor.x = candidateX;
+      const candidateY = clamp(actor.y + stepY, 0, WORLD.height - actor.height);
+      const vertical = { x: actor.x, y: candidateY, width: actor.width, height: actor.height };
+      if (!rectHitsBlock(vertical) && (!other || other.health <= 0 || !overlap(vertical, other))) actor.y = candidateY;
+    }
+    actor.prevX = actor.x;
+    actor.prevY = actor.y;
+    actor.vx = 0;
+    actor.vy = 0;
+    actor.onGround = supportAt(actor.x + actor.width / 2, actor.y + actor.height + 2);
+  };
+
+  const setWindFromGesture = (deltaX, deltaY) => {
+    const length = Math.hypot(deltaX, deltaY);
+    if (length < 5) return false;
+    const speed = clamp(length * WIND_LIMITS.gestureScale, 0, WIND_LIMITS.maxSpeed);
+    wind = { x: deltaX / length * speed, y: deltaY / length * speed };
+    return true;
+  };
+
+  const beginCanvasInteraction = (event) => {
+    if (phase !== "playing") return;
+    audio.unlock();
+    canvas.focus();
+    const canvasPoint = canvasPointFromEvent(event);
+    const worldPoint = worldPointFromCanvas(canvasPoint);
+    if (player?.health > 0 && pointInRect(worldPoint, actorGrabBounds(player))) {
+      player.dragged = true;
+      interaction = {
+        type: "actor",
+        pointerId: event.pointerId,
+        target: player,
+        offsetX: worldPoint.x - player.x,
+        offsetY: worldPoint.y - player.y,
+      };
+    } else {
+      const block = [...activeBlocks()].reverse().find((candidate) => pointInRect(worldPoint, candidate));
+      if (block) {
+        block.dragged = true;
+        interaction = {
+          type: "block",
+          pointerId: event.pointerId,
+          target: block,
+          offsetX: worldPoint.x - block.x,
+          offsetY: worldPoint.y - block.y,
+        };
+      } else {
+        const cloud = [...clouds].reverse().find((candidate) => {
+          const geometry = cloudScreenGeometry(candidate);
+          return pointInRect(canvasPoint, {
+            x: geometry.x - geometry.width / 2,
+            y: geometry.y - geometry.height / 2,
+            width: geometry.width,
+            height: geometry.height,
+          });
+        });
+        if (cloud) {
+          const geometry = cloudScreenGeometry(cloud);
+          cloud.dragged = true;
+          interaction = {
+            type: "cloud",
+            pointerId: event.pointerId,
+            target: cloud,
+            offsetX: canvasPoint.x - geometry.x,
+            offsetY: canvasPoint.y - geometry.y,
+          };
+        } else if (worldPoint.y < WORLD.height - WORLD.tile * 2) {
+          interaction = {
+            type: "wind",
+            pointerId: event.pointerId,
+            startX: canvasPoint.x,
+            startY: canvasPoint.y,
+            moved: false,
+          };
+        }
+      }
+    }
+    if (!interaction) return;
+    canvas.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+
+  const updateCanvasInteraction = (event) => {
+    if (!interaction || interaction.pointerId !== event.pointerId) return;
+    const canvasPoint = canvasPointFromEvent(event);
+    if (interaction.type === "actor") {
+      const worldPoint = worldPointFromCanvas(canvasPoint);
+      moveDraggedActor(
+        interaction.target,
+        worldPoint.x - interaction.offsetX,
+        worldPoint.y - interaction.offsetY,
+      );
+    } else if (interaction.type === "block") {
+      const worldPoint = worldPointFromCanvas(canvasPoint);
+      const column = clamp(Math.round((worldPoint.x - interaction.offsetX) / WORLD.tile), 0, WORLD.columns - 1);
+      const row = clamp(Math.round((worldPoint.y - interaction.offsetY) / WORLD.tile), 0, WORLD.rows - 1);
+      const x = column * WORLD.tile;
+      const y = row * WORLD.tile;
+      if (blockPlacementIsFree(interaction.target, x, y)) {
+        interaction.target.column = column;
+        interaction.target.row = row;
+        interaction.target.x = x;
+        interaction.target.y = y;
+      }
+    } else if (interaction.type === "cloud") {
+      const cloud = interaction.target;
+      const geometry = cloudScreenGeometry(cloud);
+      const screenX = canvasPoint.x - interaction.offsetX;
+      const screenY = canvasPoint.y - interaction.offsetY;
+      cloud.x = clamp(screenX + (camera.x - WORLD.width / 2) * geometry.parallax, -280, WORLD.width + 280);
+      cloud.y = clamp(screenY + (camera.y - WORLD.height / 2) * geometry.parallax * 0.6, -140, WORLD.height + 140);
+    } else if (interaction.type === "wind") {
+      interaction.moved = setWindFromGesture(canvasPoint.x - interaction.startX, canvasPoint.y - interaction.startY) || interaction.moved;
+    }
+    event.preventDefault();
+  };
+
+  const endCanvasInteraction = (event) => {
+    if (!interaction || interaction.pointerId !== event.pointerId) return;
+    if (interaction.type === "actor") {
+      interaction.target.dragged = false;
+      interaction.target.onGround = supportAt(
+        interaction.target.x + interaction.target.width / 2,
+        interaction.target.y + interaction.target.height + 2,
+      );
+      gameStatus.textContent = "Sol fue reposicionada";
+    } else if (interaction.type === "block") {
+      interaction.target.dragged = false;
+      gameStatus.textContent = "Bloque reposicionado en la cuadrícula";
+    } else if (interaction.type === "cloud") {
+      interaction.target.dragged = false;
+      gameStatus.textContent = "Nube reposicionada";
+    } else if (interaction.type === "wind" && interaction.moved) {
+      gameStatus.textContent = "Dirección y velocidad del viento actualizadas";
+    }
+    canvas.releasePointerCapture?.(event.pointerId);
+    interaction = null;
+    event.preventDefault();
+  };
 
   class AudioEngine {
     constructor() {
@@ -564,6 +806,19 @@
       actor.nextBlink = 3.1 + ((simulationTick + (actor.id === "sol" ? 17 : 43)) % 151) / 100;
     }
 
+    if (actor.dragged) {
+      actor.vx = 0;
+      actor.vy = 0;
+      actor.fastFalling = false;
+      actor.animationState = "idle";
+      if (actor.previousAnimationState !== "idle") {
+        actor.previousAnimationState = "idle";
+        actor.animationTime = 0;
+        actor.gaitDistance = 0;
+      }
+      return;
+    }
+
     if (actor.health <= 0) {
       actor.vx = moveToward(actor.vx, 0, ACTOR.deceleration * dt);
       actor.vy = Math.min(ACTOR.maxFallSpeed, actor.vy + ACTOR.gravity * dt);
@@ -601,9 +856,11 @@
     actor.y += actor.vy * dt;
     resolveActorVertical(actor);
     actor.fastFalling = actor.fastFalling && !actor.onGround;
+    actor.gaitDistance += Math.abs(actor.x - actor.prevX);
 
-    if (actor.y > WORLD.height + 240) {
+    if (actor.y > WORLD.height + 240 && actor.health > 0) {
       actor.health = 0;
+      spawnActorDeath(actor);
       actor.vx = 0;
       actor.vy = 0;
       gameStatus.textContent = actor.id === "sol" ? "Sol cayó al vacío" : "El visitante cayó al vacío";
@@ -620,6 +877,7 @@
     else actor.animationState = "idle";
     if (actor.animationState !== actor.previousAnimationState) {
       actor.animationTime = 0;
+      if (actor.animationState === "walk" || actor.animationState === "run") actor.gaitDistance = 0;
       actor.previousAnimationState = actor.animationState;
     }
   };
@@ -681,6 +939,7 @@
       250,
       0.34,
     );
+    if (actor.health === 0) spawnActorDeath(actor);
     audio.play("hit", actor.x + actor.width / 2);
     return true;
   };
@@ -857,6 +1116,17 @@
     }
   };
 
+  const spawnActorDeath = (actor) => {
+    if (!actor || actor.deathBurst) return;
+    actor.deathBurst = true;
+    const palette = CHARACTER_PALETTES[actor.id] || CHARACTER_PALETTES.visitor;
+    const x = actor.x + actor.width / 2;
+    const y = actor.y + actor.height * 0.45;
+    spawnParticles(x, y, palette.core, 8, 280, 0.48);
+    spawnParticles(x, y, palette.mid, 12, 390, 0.62);
+    spawnParticles(x, y, palette.edge, 10, 520, 0.72);
+  };
+
   const updateParticles = (dt) => {
     for (const particle of particles) {
       particle.prevX = particle.x;
@@ -914,10 +1184,17 @@
 
   const updateClouds = (dt) => {
     for (const cloud of clouds) {
-      cloud.x += cloud.speed * dt;
+      if (cloud.dragged) continue;
+      const velocityX = wind.x * cloud.windFactor;
+      const velocityY = wind.y * cloud.windFactor;
+      cloud.x += velocityX * dt;
+      cloud.y += velocityY * dt;
       const margin = 280;
-      if (cloud.speed > 0 && cloud.x > WORLD.width + margin) cloud.x = -margin;
-      if (cloud.speed < 0 && cloud.x < -margin) cloud.x = WORLD.width + margin;
+      const verticalMargin = 140;
+      if (velocityX > 0 && cloud.x > WORLD.width + margin) cloud.x = -margin;
+      if (velocityX < 0 && cloud.x < -margin) cloud.x = WORLD.width + margin;
+      if (velocityY > 0 && cloud.y > WORLD.height + verticalMargin) cloud.y = -verticalMargin;
+      if (velocityY < 0 && cloud.y < -verticalMargin) cloud.y = WORLD.height + verticalMargin;
     }
   };
 
@@ -1026,8 +1303,11 @@
   const animationFrameFor = (actor) => {
     const animation = ANIMATIONS[actor.animationState] || ANIMATIONS.idle;
     let column = animation.column || 0;
-    if (animation.frames) column = Math.floor(actor.animationTime * animation.fps) % animation.frames;
-    if (actor.animationState === "idle" && actor.blinkTime > 0) column = 3;
+    if (animation.frames) {
+      column = animation.stride
+        ? Math.floor(actor.gaitDistance / animation.stride * animation.frames) % animation.frames
+        : Math.floor(actor.animationTime * animation.fps) % animation.frames;
+    }
     return { animation, column };
   };
 
@@ -1057,24 +1337,74 @@
     targetContext.restore();
   };
 
+  const expressionForActor = (actor) => {
+    if (actor.dragged) return "o o";
+    if (actor.hurtPose > 0 || actor.animationState === "hurt") return "> <";
+    if (actor.aiState === "defensive") return "! !";
+    if (actor.animationState === "idle" && actor.blinkTime > 0) return "n n";
+    if (actor.animationState === "jump") return "^ ^";
+    if (actor.animationState === "fall" || actor.animationState === "fastFall") return "v v";
+    if (actor.animationState === "crouch") return "_ _";
+    if (actor.animationState === "fire" || actor.animationState === "airFire") {
+      return actor.facing < 0 ? "! <" : "> !";
+    }
+    if (actor.animationState === "stomp") return "> <";
+    return actor.facing < 0 ? "_ <" : "> _";
+  };
+
+  const roundedRectPath = (targetContext, x, y, width, height, radius) => {
+    const r = Math.min(radius, width / 2, height / 2);
+    targetContext.beginPath();
+    targetContext.moveTo(x + r, y);
+    targetContext.lineTo(x + width - r, y);
+    targetContext.quadraticCurveTo(x + width, y, x + width, y + r);
+    targetContext.lineTo(x + width, y + height - r);
+    targetContext.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    targetContext.lineTo(x + r, y + height);
+    targetContext.quadraticCurveTo(x, y + height, x, y + height - r);
+    targetContext.lineTo(x, y + r);
+    targetContext.quadraticCurveTo(x, y, x + r, y);
+    targetContext.closePath();
+  };
+
+  const drawMonitorFace = (targetContext, actor, x, baseline, visibleHeight = 100) => {
+    const layout = MONITOR_LAYOUTS[actor.animationState] || MONITOR_LAYOUTS.idle;
+    const scale = visibleHeight / 100;
+    const width = layout.width * scale;
+    const height = layout.height * scale;
+    const centerX = x + layout.x * actor.facing * scale;
+    const centerY = baseline + layout.y * scale;
+    const palette = CHARACTER_PALETTES[actor.id] || CHARACTER_PALETTES.visitor;
+    targetContext.save();
+    targetContext.translate(centerX, centerY);
+    targetContext.rotate(layout.rotation * actor.facing);
+    roundedRectPath(targetContext, -width / 2, -height / 2, width, height, 4.5 * scale);
+    targetContext.fillStyle = "#061938";
+    targetContext.fill();
+    targetContext.strokeStyle = "#020c1e";
+    targetContext.lineWidth = 1.25 * scale;
+    targetContext.stroke();
+    targetContext.fillStyle = palette.mid;
+    targetContext.textAlign = "center";
+    targetContext.textBaseline = "middle";
+    targetContext.font = `900 ${Math.max(8, 12.5 * scale)}px "Courier New", monospace`;
+    targetContext.fillText(expressionForActor(actor), 0, 0.6 * scale, width * 0.82);
+    targetContext.restore();
+  };
+
   const drawCloud = (cloud) => {
     const cloudSprite = cloudSprites[cloud.design];
     if (!cloudSprite) return;
-    const parallax = 0.02 + cloud.depth * 0.018;
-    const x = cloud.x - (camera.x - WORLD.width / 2) * parallax;
-    const y = cloud.y - (camera.y - WORLD.height / 2) * parallax * 0.6;
-    const baseHeights = [78, 94, 90];
-    const height = baseHeights[cloud.design] * cloud.scale * (1 + (camera.zoom - 1) * 0.025);
-    const width = height * cloudSprite.width / cloudSprite.height;
+    const geometry = cloudScreenGeometry(cloud);
     ctx.save();
-    ctx.globalAlpha = 0.7 + cloud.depth * 0.1;
+    ctx.globalAlpha = cloud.opacity;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(
       cloudSprite,
-      Math.round(x - width / 2),
-      Math.round(y - height / 2),
-      width,
-      height,
+      Math.round(geometry.x - geometry.width / 2),
+      Math.round(geometry.y - geometry.height / 2),
+      geometry.width,
+      geometry.height,
     );
     ctx.restore();
   };
@@ -1171,6 +1501,7 @@
       actor.facing,
       actor.id === "sol" ? "none" : "hue-rotate(170deg) saturate(.82) brightness(1.08)",
     );
+    drawMonitorFace(ctx, actor, x + actor.width / 2, y + actor.height, animation.height);
   };
 
   const drawProjectile = (shot, alpha) => {
@@ -1289,6 +1620,15 @@
         386,
         280,
       );
+      drawMonitorFace(previewContext, {
+        id: "sol",
+        facing: 1,
+        animationState: "idle",
+        blinkTime: Math.floor(time * 2) % 13 === 0 ? 0.1 : 0,
+        hurtPose: 0,
+        aiState: "neutral",
+        dragged: false,
+      }, characterPreview.width / 2, 386, 280);
     } else {
       previewContext.fillStyle = "#07111f";
       previewContext.textAlign = "center";
@@ -1318,7 +1658,7 @@
       image.addEventListener("error", assetLoaded);
       image.src = source;
     };
-    loadSheet("locomotion", "/assets/sol-locomotion-v2.png", SPRITE_LAYOUTS.locomotion);
+    loadSheet("locomotion", "/assets/sol-locomotion-v4.png", SPRITE_LAYOUTS.locomotion);
     loadSheet("actions", "/assets/sol-actions-v2.png", SPRITE_LAYOUTS.actions);
 
     ["small", "medium", "long"].forEach((name, index) => {
@@ -1425,10 +1765,10 @@
     button.addEventListener("pointerleave", release);
   }
 
-  canvas.addEventListener("pointerdown", () => {
-    audio.unlock();
-    canvas.focus();
-  });
+  canvas.addEventListener("pointerdown", beginCanvasInteraction);
+  canvas.addEventListener("pointermove", updateCanvasInteraction);
+  canvas.addEventListener("pointerup", endCanvasInteraction);
+  canvas.addEventListener("pointercancel", endCanvasInteraction);
 
   canvas.addEventListener("wheel", (event) => {
     if (phase !== "playing") return;
@@ -1460,6 +1800,7 @@
   const debugApi = Object.freeze({
     version: () => VERSION,
     fixedStep: () => WORLD.fixedStep,
+    animationStandardFrames: () => ANIMATION_STANDARD_FRAMES,
     inputActions: () => [...INPUT_ACTIONS],
     cameraLimits: () => ({ ...CAMERA_LIMITS }),
     cameraGoalFor,
@@ -1467,6 +1808,7 @@
     spawnRival,
     spawnVisitor: spawnRival,
     reset: resetGame,
+    setWindFromGesture,
     radialExplosion,
     damageSol: (amount = 1) => damageActor(
       player,
@@ -1478,7 +1820,8 @@
     snapshot: () => ({
       phase,
       simulationTick,
-      wind,
+      worldSeed,
+      wind: { ...wind },
       camera: { ...camera },
       sol: player ? { ...player } : null,
       visitor: rival ? { ...rival } : null,
@@ -1486,9 +1829,18 @@
       rival: rival ? { ...rival } : null,
       cloudCount: clouds.length,
       cloudDesigns: clouds.map((cloud) => cloud.design),
-      cloudSpeeds: clouds.map((cloud) => cloud.speed),
+      cloudSpeeds: clouds.map((cloud) => Math.hypot(wind.x, wind.y) * cloud.windFactor),
+      cloudVelocities: clouds.map((cloud) => ({ x: wind.x * cloud.windFactor, y: wind.y * cloud.windFactor })),
+      cloudOpacities: clouds.map((cloud) => cloud.opacity),
+      clouds: clouds.map((cloud) => ({ ...cloud })),
+      expressions: {
+        sol: player ? expressionForActor(player) : null,
+        visitor: rival ? expressionForActor(rival) : null,
+      },
+      interaction: interaction ? { type: interaction.type, pointerId: interaction.pointerId } : null,
       blocks: blocks.map((block) => ({ ...block })),
       projectiles: projectiles.map((shot) => ({ ...shot })),
+      particleColors: particles.map((particle) => particle.color),
     }),
   });
   window.__ERROR101_DEBUG__ = debugApi;
